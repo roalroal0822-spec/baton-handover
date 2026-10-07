@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>업무바통 - 인수인계 도우미</title>
+<link rel="stylesheet" href="/core/common.css">
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>업무바통</h1>
+    <div class="sub">전임자 자료로 인수인계 초안 만들기 · 전임자 확인 · 후임자 활용</div>
+  </div>
+  <div class="spacer"></div>
+  <select id="cur-h" title="인수인계 건 선택"></select>
+  <span id="llm-badge" class="llm-badge">모델: …</span>
+</header>
+<nav class="tabs">
+  <button data-tab="start">① 자료 넣기</button>
+  <button data-tab="draft">② 인수인계 초안·검토</button>
+  <button data-tab="calendar">연간 업무 달력</button>
+  <button data-tab="flags">확인 필요</button>
+  <button data-tab="docs">자료 목록</button>
+  <button data-tab="ask">③ 후임자 질문</button>
+  <button data-tab="manual">후임자 업무매뉴얼</button>
+  <button data-tab="history">처리 이력</button>
+</nav>
+<main>
+  <section class="tab" id="tab-start">
+    <div class="grid2">
+      <div class="panel">
+        <h2>새 인수인계 만들기</h2>
+        <p class="muted small">한글(.hwpx/.hwp)·PDF·엑셀·워드·메일(.eml)·텍스트가 섞인 업무 폴더를 통째로 넣으면 됩니다. 원본 파일은 수정하지 않습니다.</p>
+        <label class="f">자료 넣는 방법</label>
+        <div class="row">
+          <label><input type="radio" name="src" value="upload" checked> 폴더·파일 올리기</label>
+          <label><input type="radio" name="src" value="local"> PC 폴더 경로</label>
+          <label><input type="radio" name="src" value="docsystem"> 문서시스템 연계(모의 API)</label>
+          <label><input type="radio" name="src" value="sample"> 시연용 모의자료</label>
+        </div>
+        <div id="src-upload" class="src-box">
+          <div class="drop" id="drop">여기에 업무 폴더를 끌어다 놓거나
+            <div class="row" style="justify-content:center;margin-top:8px">
+              <button id="pick-folder">폴더 선택</button><button id="pick-files">파일 선택</button>
+            </div>
+            <div id="picked" class="small" style="margin-top:6px"></div>
+          </div>
+          <input type="file" id="in-folder" webkitdirectory multiple hidden>
+          <input type="file" id="in-files" multiple hidden>
+        </div>
+        <div id="src-local" class="src-box" hidden>
+          <label class="f">폴더 경로 (이 프로그램이 실행 중인 PC 기준)</label>
+          <input id="local-path" class="wide" placeholder="예: C:\업무\인수인계자료">
+        </div>
+        <div id="src-docsystem" class="src-box" hidden>
+          <label class="f">문서시스템 API 주소 (비워두면 내장 모의 API 사용)</label>
+          <input id="ds-url" class="wide" placeholder="http://127.0.0.1:8101/mock-docsystem">
+          <label class="f">문서 소유자(전임자 ID)</label>
+          <input id="ds-owner" class="wide" placeholder="예: kdy">
+        </div>
+        <div id="src-sample" class="src-box" hidden>
+          <p class="small muted">가상 기관(가람구시설관리공단) 시설운영팀 김도윤 주임의 업무폴더 9개 파일(한글·엑셀·PDF·워드·메일·메모)을 사용합니다.</p>
+        </div>
+        <div class="grid2">
+          <div><label class="f">전임자 이름 (비우면 자동 판별)</label><input id="pred" class="wide"></div>
+          <div><label class="f">후임자 이름</label><input id="succ" class="wide"></div>
+        </div>
+        <label class="f">제목 (선택)</label><input id="title" class="wide" placeholder="예: 2026년 하반기 시설운영팀 인사이동">
+        <div class="row" style="margin-top:12px"><button class="primary" id="create">인수인계 초안 만들기</button></div>
+      </div>
+      <div class="panel">
+        <h2>만든 인수인계</h2>
+        <div id="h-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-draft" hidden></section>
+  <section class="tab" id="tab-calendar" hidden></section>
+  <section class="tab" id="tab-flags" hidden></section>
+  <section class="tab" id="tab-docs" hidden></section>
+  <section class="tab" id="tab-ask" hidden>
+    <div class="panel">
+      <h2>후임자 질문</h2>
+      <p class="small muted">전임자 자료와 인수인계 내용만 근거로 답합니다. 예: "3월에 할 일이 뭐야?", "냉난방기 공사 누구랑 협의해?", "급한 현안 알려줘"</p>
+      <div class="chat" id="chat"></div>
+      <div class="row" style="margin-top:10px">
+        <input id="q" class="wide" style="flex:1" placeholder="질문을 입력하세요">
+        <button class="primary" id="ask">질문</button>
+      </div>
+      <div class="row small" style="margin-top:6px" id="q-examples"></div>
+    </div>
+  </section>
+  <section class="tab" id="tab-manual" hidden>
+    <div class="panel">
+      <h2>후임자 맞춤형 업무매뉴얼</h2>
+      <div class="row">
+        <div><label class="f">후임자 이름</label><input id="m-name"></div>
+        <div><label class="f">착임일</label><input id="m-start" type="date"></div>
+        <div><label class="f">경력</label><select id="m-career"><option value="신규">처음 맡는 업무(용어 설명 포함)</option><option value="경력">유사 업무 경험 있음</option></select></div>
+        <div style="align-self:flex-end"><button class="primary" id="m-make">매뉴얼 만들기</button></div>
+      </div>
+    </div>
+    <div id="m-out"></div>
+  </section>
+  <section class="tab" id="tab-history" hidden></section>
+</main>
+<script src="/core/common.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
