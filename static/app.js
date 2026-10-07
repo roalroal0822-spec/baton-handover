@@ -74,6 +74,7 @@ async function refreshList(selectId) {
 async function select(id) {
   H = await api("GET", `/api/handovers/${id}`);
   $("#cur-h").value = id;
+  $("#m-name").value = H.successor || "";
   renderAll();
 }
 

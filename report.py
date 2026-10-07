@@ -116,7 +116,9 @@ def build_manual(h, successor="", career="신규", start=None):
     urgent = [i for i in issues if i["days_left"] is not None and i["days_left"] <= 30]
     for i in urgent[:3]:
         state = "기한 지남" if i["days_left"] < 0 else f"D-{i['days_left']}"
-        week1.append(f"[{state}] {i['title']}: {i.get('next_action') or '진행상황 확인'}")
+        nxt = i.get("next_action") or "진행상황 확인"
+        same = re.sub(r"\W", "", nxt) in re.sub(r"\W", "", i["title"])
+        week1.append(f"[{state}] {i['title']}" + ("" if same else f": {nxt}"))
     for c in contacts[:4]:
         week1.append(f"{c['name']} {c.get('title', '')}({c.get('org', '')})에게 인사·업무 확인: {', '.join(c.get('topics', [])[:1])}")
     week1.append("확인 필요 사항(인수인계서 6장)을 전임자와 함께 정리")

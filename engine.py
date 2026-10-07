@@ -415,18 +415,27 @@ def build_flags(sections, kind_of_file):
         flags.append({"id": new_id("fl"), "type": t, "message": msg, "refs": refs, "sources": sources[:4],
                       "severity": severity, "resolved": False})
 
-    # 불확실: 모호한 표현, 개인메모에만 근거
+    # 불확실: 모호한 표현, 개인메모에만 근거 (항목당 1건, 같은 원문 줄은 한 번만)
+    seen_quotes = set()
     for sec in ("schedule", "issues"):
         for it in sections[sec]:
             quotes = " ".join(s["quote"] for s in it["sources"])
             label = it.get("task") if sec == "schedule" else it.get("title")
-            if HEDGES.search(quotes):
-                m = HEDGES.search(quotes)
-                flag("불확실", f"'{label}' 은(는) 자료에 '{m.group(0)}' 같은 불확실한 표현이 있습니다.",
-                     [it["id"]], it["sources"])
-            if sec in ("schedule", "issues") and it["origin"] and all(o == "개인메모" for o in it["origin"]):
-                flag("불확실", f"'{label}' 은(는) 개인메모에만 있고 공식문서로 확인되지 않습니다.",
-                     [it["id"]], it["sources"], "하")
+            reasons = []
+            m = HEDGES.search(quotes)
+            if m:
+                reasons.append(f"'{m.group(0)}' 같은 불확실한 표현이 있음")
+            memo_only = it["origin"] and all(o == "개인메모" for o in it["origin"])
+            if memo_only:
+                reasons.append("개인메모에만 있고 공식문서로 확인되지 않음")
+            if not reasons:
+                continue
+            hq = next((s["quote"] for s in it["sources"] if HEDGES.search(s["quote"])), None)
+            key = hq or frozenset(s["quote"] for s in it["sources"])
+            if key in seen_quotes:
+                continue
+            seen_quotes.add(key)
+            flag("불확실", f"'{label}': " + ", ".join(reasons) + ".", [it["id"]], it["sources"], "중" if m else "하")
 
     # 충돌: 같은 일(대상어+행위)인데 시기가 다름
     sch = sections["schedule"]
@@ -461,12 +470,12 @@ def build_flags(sections, kind_of_file):
             flag("누락", f"{c['name']} {c.get('title', '')}의 연락처가 자료에 없습니다.", [c["id"]], c["sources"], "하")
     for it in sections["issues"]:
         if not it.get("next_action"):
-            flag("누락", f"현안 '{it['title']}' 의 다음 할 일이 적혀 있지 않습니다.", [it["id"]], it["sources"], "하")
+            flag("누락", f"현안 '{it['title']}': 다음 할 일이 적혀 있지 않습니다.", [it["id"]], it["sources"], "하")
         if not it.get("due"):
-            flag("누락", f"현안 '{it['title']}' 의 기한이 없습니다.", [it["id"]], it["sources"], "하")
+            flag("누락", f"현안 '{it['title']}': 기한이 적혀 있지 않습니다.", [it["id"]], it["sources"], "하")
     for sec, name in (("rnr", "담당업무"), ("schedule", "일정"), ("contacts", "연락처"), ("issues", "현안")):
         if not sections[sec]:
-            flag("누락", f"자료에서 {name}을(를) 찾지 못했습니다. 전임자가 직접 보완해 주세요.", [], [], "상")
+            flag("누락", f"자료에서 {name} 항목을 찾지 못했습니다. 전임자가 직접 보완해 주세요.", [], [], "상")
     months = set()
     for it in sch:
         months.update(it["months"])
