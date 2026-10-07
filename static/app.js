@@ -107,7 +107,7 @@ function renderSection(key) {
   wrap.append(el("div", { class: "row" }, el("h2", { style: { flex: 1, margin: 0 } }, `${S.title} (${items.filter(i => i.status !== "삭제").length})`),
     el("button", { class: "small", onclick: () => addItem(key) }, "+ 직접 추가")));
   const tbl = el("table", { class: "t", style: { marginTop: "8px" } });
-  tbl.append(el("tr", {}, S.cols.map(c => el("th", {}, c.l)), el("th", {}, "근거(출처)"), el("th", {}, "상태"), el("th", {}, "")));
+  tbl.append(el("tr", {}, S.cols.map(c => el("th", {}, c.l)), el("th", {}, "근거(출처)"), el("th", {}, "검토"), el("th", {}, "")));
   for (const it of items) {
     const tr = el("tr", { style: it.status === "삭제" ? { opacity: .45, textDecoration: "line-through" } : {} });
     for (const c of S.cols) {
