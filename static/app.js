@@ -122,7 +122,8 @@ function renderSection(key) {
       });
       tr.append(td);
     }
-    tr.append(el("td", {}, citeChips(it.sources, CTX()), (it.origin || []).includes("개인메모") ? el("span", { class: "tag warn", title: "개인메모에서 나온 내용" }, "메모") : null));
+    tr.append(el("td", {}, citeChips(it.sources, CTX()), (it.origin || []).includes("개인메모") ? el("span", { class: "tag warn", title: "개인메모에서 나온 내용" }, "메모") : null,
+      key === "schedule" ? schedTags(it) : null));
     tr.append(el("td", {}, statusTag(it)));
     tr.append(el("td", { style: { whiteSpace: "nowrap" } },
       H.review.confirmed ? null : el("button", { class: "small", title: "내용이 맞음", onclick: async () => {
@@ -137,6 +138,14 @@ function renderSection(key) {
   if (!items.length) tbl.append(el("tr", {}, el("td", { colspan: S.cols.length + 3, class: "muted" }, "자료에서 찾지 못했습니다. '직접 추가'로 보완하세요.")));
   wrap.append(tbl);
   return wrap;
+}
+// 일정 시기 표시: 완료·지난 일·기한 지남, 대략적인 시기, 다른 해
+const TIMING_TAG = { "완료": "gray", "지난 일": "gray", "기한 지남": "bad" };
+function baseYear() { return Number(((H && H.draft.today) || new Date().toISOString()).slice(0, 4)); }
+function schedTags(it) {
+  return [it.timing ? el("span", { class: "tag " + (TIMING_TAG[it.timing] || "gray"), title: "오늘 기준" }, it.timing) : null,
+    it.approx ? el("span", { class: "tag info", title: it.when || "" }, "시기 대략") : null,
+    it.year && it.year !== baseYear() ? el("span", { class: "tag info" }, `${it.year}년`) : null];
 }
 function statusTag(it) { return el("span", { class: "st tag " + (STATUS_TAG[it.status] || "gray") }, it.status || "초안"); }
 
@@ -170,6 +179,8 @@ function renderDraft() {
       ...[["담당업무", cnt("rnr")], ["일정", cnt("schedule")], ["연락처", cnt("contacts")], ["현안", cnt("issues")], ["확인 필요", open]]
         .map(([a, b]) => el("div", { class: "stat" }, el("b", {}, b), a))),
     el("h3", {}, "업무 개요"), el("p", { style: { whiteSpace: "pre-wrap" } }, d.overview),
+    d.filtered && d.filtered.length ? el("details", {}, el("summary", { class: "small" }, `모델 결과 중 원문과 맞지 않아 버린 항목 ${d.filtered.reduce((n, f) => n + (f.count || 1), 0)}건`),
+      el("ul", { class: "small" }, d.filtered.map(f => el("li", {}, `[${SEC[f.section] ? SEC[f.section].title : f.section}] ${f.label || "(이름 없음)"}${(f.count || 1) > 1 ? ` (${f.count}회)` : ""} — ${f.reason} `, citeChips(f.sources || [], CTX()))))) : null,
     d.llm_errors && d.llm_errors.length ? el("details", {}, el("summary", { class: "small" }, `모델 처리 경고 ${d.llm_errors.length}건 (해당 부분은 규칙 기반 결과 사용)`), el("pre", { class: "doc small" }, d.llm_errors.join("\n"))) : null,
     H.skipped && H.skipped.length ? el("details", {}, el("summary", { class: "small" }, `읽지 못한 파일 ${H.skipped.length}개`), el("ul", { class: "small" }, H.skipped.map(s => el("li", {}, `${s.file}: ${s.reason}`)))) : null,
     el("div", { class: "row", style: { marginTop: "10px" } },
@@ -205,15 +216,19 @@ function renderCalendar() {
   sec.append(el("div", { class: "panel" }, el("h2", {}, "연간 업무 달력"),
     el("p", { class: "small muted" }, "자료에서 찾은 시기별 할 일입니다. 항목을 누르면 근거를 볼 수 있습니다."),
     monthly.length ? el("div", {}, el("b", {}, "매월 반복: "), monthly.map(s => el("span", { class: "chip", onclick: () => showSource(s.sources[0], CTX()) }, (s.day ? s.day + "일 " : "") + s.task))) : null));
+  const by = baseYear();
+  const later = items.filter(s => s.recurring !== "매월" && !s.recurring && s.year && s.year > by);
   const cal = el("div", { class: "cal" });
+  const itemEl = s => el("div", { class: "it", style: { cursor: "pointer", opacity: s.timing === "완료" || s.timing === "지난 일" ? .55 : 1 }, onclick: () => s.sources[0] && showSource(s.sources[0], CTX()) },
+    el("b", {}, s.day ? `${s.day}일 ` : ""), s.task, (s.origin || []).every(o => o === "개인메모") ? el("span", { class: "tag warn" }, "메모") : null, schedTags(s));
   for (let m = 1; m <= 12; m++) {
-    const its = items.filter(s => s.recurring !== "매월" && (s.months || []).includes(m)).sort((a, b) => (a.day || 0) - (b.day || 0));
+    const its = items.filter(s => s.recurring !== "매월" && !later.includes(s) && (s.months || []).includes(m)).sort((a, b) => (a.day || 0) - (b.day || 0));
     cal.append(el("div", { class: "m" + (m === nowM ? " now" : "") }, el("h4", {}, `${m}월`),
-      its.length ? its.map(s => el("div", { class: "it", style: { cursor: "pointer" }, onclick: () => s.sources[0] && showSource(s.sources[0], CTX()) },
-        el("b", {}, s.day ? `${s.day}일 ` : ""), s.task, (s.origin || []).every(o => o === "개인메모") ? el("span", { class: "tag warn" }, "메모") : null))
-        : el("div", { class: "small muted" }, "일정 없음")));
+      its.length ? its.map(itemEl) : el("div", { class: "small muted" }, "일정 없음")));
   }
   sec.append(cal);
+  if (later.length) sec.append(el("div", { class: "panel" }, el("h3", {}, `${by + 1}년 이후 일정`),
+    later.map(s => el("div", {}, el("b", {}, `${s.year}년 ${s.months[0]}월${s.day ? " " + s.day + "일" : ""} `), itemEl(s)))));
 }
 
 // ------------------------------------------------------------ 확인 필요
@@ -222,10 +237,10 @@ function renderFlags() {
   if (needH(sec)) return;
   sec.innerHTML = "";
   const flags = H.draft.flags;
-  const types = { "충돌": "bad", "불확실": "warn", "누락": "info" };
+  const types = { "충돌": "bad", "기한 지남": "bad", "불확실": "warn", "누락": "info" };
   const panel = el("div", { class: "panel" }, el("h2", {}, `확인이 필요한 사항 (${flags.filter(f => !f.resolved).length}건 남음)`),
-    el("p", { class: "small muted" }, "충돌: 자료끼리 내용이 다름 · 불확실: '아마', '미정' 같은 표현 또는 개인메모에만 있음 · 누락: 연락처·기한·다음 할 일 등이 빠짐. 공식문서와 개인메모는 자료 목록에서 구분됩니다."));
-  for (const t of ["충돌", "불확실", "누락"]) {
+    el("p", { class: "small muted" }, "충돌: 자료끼리 내용이 다름 · 기한 지남: 해야 할 일인데 오늘 기준으로 날짜가 지남 · 불확실: '아마', '미정' 같은 표현 또는 개인메모에만 있음 · 누락: 연락처·기한·다음 할 일 등이 빠짐. 공식문서와 개인메모는 자료 목록에서 구분됩니다."));
+  for (const t of ["충돌", "기한 지남", "불확실", "누락"]) {
     const fs = flags.filter(f => f.type === t);
     if (!fs.length) continue;
     panel.append(el("h3", {}, el("span", { class: "tag " + types[t] }, t), ` ${fs.length}건`));

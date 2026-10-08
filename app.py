@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 
 from core.config import Config
-from core.export import export
+from core.export import FORMATS, export
 from core.llm import LLM
 from core.server import App, HttpError, file_response
 from core.sources import DocSystemSource, LocalFolderSource, UploadSource
@@ -252,6 +252,8 @@ def manual(req):
 def export_doc(req):
     h = load_h(req.params["hid"])
     fmt = req.query.get("fmt", "hwpx")
+    if fmt not in FORMATS:
+        raise HttpError(400, f"지원하지 않는 파일 형식입니다: '{fmt}'. 한글(hwpx)·워드(docx)·마크다운(md) 중에서 골라 주세요.")
     if req.params["what"] == "handover":
         blocks = report.handover_blocks(h)
         name = f"인수인계서_{h['draft'].get('predecessor', '')}"

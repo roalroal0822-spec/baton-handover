@@ -24,14 +24,27 @@ def _src(it, n=2):
     return "; ".join(f"{s['file'].split('/')[-1]} {s['loc']}" for s in it.get("sources", [])[:n])
 
 
-def _when(it):
+def _when(it, base_year=None):
     if it.get("recurring") == "매월":
         return "매월" + (f" {it['day']}일" if it.get("day") else "")
     m = it["months"]
     s = f"{m[0]}월" if len(m) == 1 else ", ".join(f"{x}월" for x in m[:4])
     if it.get("day"):
         s += f" {it['day']}일"
+    if it.get("year") and base_year and it["year"] != base_year:
+        s = f"{it['year']}년 {s}"
+    if it.get("approx"):
+        s += " (대략)"
+    if it.get("timing"):
+        s += f" [{it['timing']}]"
     return s
+
+
+def _base_year(h):
+    try:
+        return int((h["draft"].get("today") or h.get("created") or "")[:4])
+    except ValueError:
+        return date.today().year
 
 
 def live(items):
@@ -52,10 +65,11 @@ def handover_blocks(h):
               ], [1, 3]),
               ("h1", "1. 업무 개요"), ("p", d.get("overview", "")),
               ("h1", "2. 담당 업무(R&R)"),
-              ("table", ["담당 업무", "상태", "근거"], [[r["duty"], r.get("status", ""), _src(r)] for r in live(S["rnr"])], [4, 1, 3]),
+              ("table", ["담당 업무", "세부 내용·메모", "상태", "근거"],
+               [[r["duty"], r.get("detail", ""), r.get("status", ""), _src(r, 3)] for r in live(S["rnr"])], [3, 3, 1, 2]),
               ("h1", "3. 연간 업무 일정"),
               ("table", ["시기", "할 일", "관련", "근거"],
-               [[_when(s), s["task"], s.get("related", ""), _src(s)] for s in live(S["schedule"])], [1, 4, 2, 3]),
+               [[_when(s, _base_year(h)), s["task"], s.get("related", ""), _src(s)] for s in live(S["schedule"])], [1, 4, 2, 3]),
               ("h1", "4. 진행 중인 현안"),
               ("table", ["현안", "상태", "다음 할 일", "기한", "근거"],
                [[i["title"], i.get("state", ""), i.get("next_action", ""), i.get("due", ""), _src(i)] for i in live(S["issues"])],
@@ -99,8 +113,19 @@ def build_manual(h, successor="", career="신규", start=None):
     start = start or date.today()
     order = [((start.month - 1 + i) % 12) + 1 for i in range(12)]
     months = []
+
+    def in_slot(s, m):
+        if m not in s["months"] or s.get("recurring") == "매월":
+            return False
+        if s.get("recurring"):  # 매년·매분기: 해마다 돌아온다
+            return True
+        if s.get("timing") in ("완료", "지난 일", "기한 지남"):
+            return False  # 이미 지난 일은 앞으로의 할 일이 아니다(기한 지남은 첫 주 할 일로)
+        slot_year = start.year + (1 if m < start.month else 0)
+        return not s.get("year") or s["year"] == slot_year
+
     for m in order:
-        items = [s for s in live(S["schedule"]) if m in s["months"] and s.get("recurring") != "매월"]
+        items = [s for s in live(S["schedule"]) if in_slot(s, m)]
         monthly = [s for s in live(S["schedule"]) if s.get("recurring") == "매월"]
         months.append({"month": m, "items": items, "monthly": monthly})
     issues = []
@@ -119,6 +144,9 @@ def build_manual(h, successor="", career="신규", start=None):
         nxt = i.get("next_action") or "진행상황 확인"
         same = re.sub(r"\W", "", nxt) in re.sub(r"\W", "", i["title"])
         week1.append(f"[{state}] {i['title']}" + ("" if same else f": {nxt}"))
+    for s in live(S["schedule"]):
+        if s.get("timing") == "기한 지남" and len(week1) < 5 and not any(s["task"] in w for w in week1):
+            week1.append(f"[기한 지남] {s['task']}: 처리됐는지 확인")
     for c in contacts[:4]:
         week1.append(f"{c['name']} {c.get('title', '')}({c.get('org', '')})에게 인사·업무 확인: {', '.join(c.get('topics', [])[:1])}")
     week1.append("확인 필요 사항(인수인계서 6장)을 전임자와 함께 정리")

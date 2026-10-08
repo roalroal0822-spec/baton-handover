@@ -7,8 +7,10 @@ import re
 import time
 import uuid
 from collections import Counter, defaultdict
+from datetime import date
+from email.utils import parsedate_to_datetime
 
-from core.textutil import (HEDGES, extract_dates, find_emails, find_orgs, find_people, find_phones,
+from core.textutil import (HEDGES, NOT_NAMES, extract_dates, find_emails, find_orgs, find_people, find_phones,
                            normalize_phone, similarity, split_sentences, strip_josa)
 
 ACTIONS = ["재계약", "입찰공고", "입찰", "공고", "착공", "준공", "제출", "보고", "통보", "점검", "검사", "재검사",
@@ -23,7 +25,7 @@ GENERIC = {"용역", "공사", "계약", "관리", "유지", "유지관리", "�
            "가람체육센터", "체육센터", "계약기간", "종료", "후속", "조치", "대비", "중순", "말까지", "까지", "알고",
            "있음", "한번", "결과", "주시기", "바랍니다", "합니다", "하고자", "말씀하신", "일정", "기간", "부탁드립니다"}
 VERBISH = ("니다", "다", "요", "음", "함", "고", "서", "며", "면", "는", "던", "할", "될", "된", "해야", "하여")
-NAME_KEYS = re.compile(r"이름|성명|담당자|업체\s*담당")
+NAME_KEYS = re.compile(r"이름|성명|담당자|업체\s*담당|^\s*담당\s*$")
 PHONE_KEYS = re.compile(r"연락처|전화|휴대|내선|핸드폰|tel", re.I)
 ORG_KEYS = re.compile(r"소속|업체|기관|부서|회사")
 TOPIC_KEYS = re.compile(r"업무|협의|계약명|비고|용도|역할")
@@ -91,21 +93,129 @@ def _action(text):
     return ""
 
 
+# ---------------------------------------------------------------- 사람 이름 (core.find_people 보강)
+
+SURNAMES = set("김이박최정강조윤장임한오서신권황안송류유전홍고문양손배백허남심노하곽성차주우구민진나지엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예봉경사부")
+NAME_STOP = NOT_NAMES | {"인수", "인계", "전산", "안전", "이번", "이후", "이상", "이하", "이용", "정기", "정산", "조치", "최종",
+                         "신청", "전체", "공사", "공고", "주차", "방수", "하자", "기간", "서류", "한번", "장비", "결재",
+                         "보고서", "예산", "총괄", "실무", "위탁", "관계", "구분", "담당자", "연락처", "메모", "회의"}
+EXTRA_TITLES = ("PM", "PL", "매니저", "사무관", "주사보", "주사", "서기", "실무관", "반장", "엔지니어", "감리원")
+RE_EXTRA_PERSON = re.compile(r"([가-힣]{2,4})\s?(" + "|".join(EXTRA_TITLES) + r")(?![A-Za-z가-힣])")
+# '시설운영팀장 이정훈'처럼 직위가 이름 앞에 붙은 꼴 (부서명이 붙은 경우만: 오탐 방지)
+RE_TITLE_FIRST = re.compile(r"([가-힣]{2,12}?)(팀장|과장|센터장|소장|실장|부장|국장|본부장)\s+([가-힣]{2,4})(?![가-힣])")
+
+
+def is_name(n):
+    return (2 <= len(n) <= 4 and n[0] in SURNAMES and n not in NAME_STOP
+            and not n.endswith(("팀", "과", "실", "부", "청", "단", "님")))
+
+
+def people_in(text):
+    """(이름, 직위, 위치) 목록. core.find_people + 'PM' 같은 직함, '부서장 이름' 꼴."""
+    out = [p for p in find_people(text) if is_name(p[0])]
+    names = {p[0] for p in out}
+    for m in RE_EXTRA_PERSON.finditer(text):
+        if is_name(m.group(1)) and m.group(1) not in names:
+            out.append((m.group(1), m.group(2), m.start()))
+            names.add(m.group(1))
+    for m in RE_TITLE_FIRST.finditer(text):
+        if is_name(m.group(3)) and m.group(3) not in names:
+            out.append((m.group(3), m.group(2), m.start(3)))
+            names.add(m.group(3))
+    return sorted(out, key=lambda p: p[2])
+
+
+def title_first_org(text, name):
+    m = re.search(r"([가-힣]{2,12}?)(팀|과|실|센터|부|국|본부)(장)\s+" + re.escape(name), text)
+    return m.group(1) + m.group(2) if m else ""
+
+
+# ---------------------------------------------------------------- 날짜 (core.extract_dates 보강)
+
+RE_ENUM_MONTHS = re.compile(r"(?<![\d.])(\d{1,2}(?:\s*[·,/、및]\s*\d{1,2})+)\s*월")
+RE_YEAR_MONTH = re.compile(r"(20\d{2})\s*년\s*(\d{1,2})\s*월")
+RE_REL_MONTH = re.compile(r"(다음\s*달|내달|익월|이번\s*달|이달|금월)\s*(첫째\s*주|둘째\s*주|셋째\s*주|넷째\s*주|마지막\s*주|초|중순|중|말|(\d{1,2})\s*일)?")
+RE_NEXT_YEAR = re.compile(r"내년|다음\s*해|명년|익년")
+
+
+def dates_in(text, ref=None):
+    """extract_dates 결과에 열거 월(3·6·9·12월), 상·하반기(대략), 상대 시기(다음 달 첫째 주), 연도를 보탠다."""
+    ref = ref or date.today()
+    dd = dict(extract_dates(text), approx=False, year=None)
+    if dd["date"]:
+        dd["year"] = int(dd["date"][:4])
+    m = RE_ENUM_MONTHS.search(text)
+    if m and not dd["date"]:
+        ms = sorted({int(x) for x in re.findall(r"\d{1,2}", m.group(1)) if 1 <= int(x) <= 12})
+        if len(ms) > len(dd["months"]) and dd["recurring"] != "매월":
+            dd.update(months=ms, label=m.group(0))
+            if re.search(r"분기", text):
+                dd["recurring"] = "매분기"
+    if dd["label"] in ("상반기", "하반기"):
+        end = 6 if dd["label"] == "상반기" else 12
+        dd.update(months=[end], approx=True, label=f"{dd['label']} 중({end}월까지, 대략)")
+    if not dd["months"]:
+        m = RE_REL_MONTH.search(text)
+        if m:
+            add = 0 if re.match(r"이번|이달|금월", m.group(1)) else 1
+            y, mo = ref.year + (ref.month + add - 1) // 12, (ref.month + add - 1) % 12 + 1
+            dd.update(months=[mo], year=y)
+            extra = (m.group(2) or "").replace(" ", "")
+            if m.group(3):
+                try:
+                    dd.update(day=int(m.group(3)), date=date(y, mo, int(m.group(3))).isoformat())
+                except ValueError:
+                    pass
+            elif extra:
+                dd["approx"] = True
+            dd["label"] = f"{m.group(0).strip()}(={y}년 {mo}월{(' ' + extra) if extra and not m.group(3) else ''}, 기준일 {ref.isoformat()})"
+    if dd["year"] is None and dd["months"]:
+        m = RE_YEAR_MONTH.search(text)
+        if m and int(m.group(2)) == dd["months"][0]:
+            dd["year"] = int(m.group(1))
+        elif RE_NEXT_YEAR.search(text) and not dd["recurring"]:
+            dd["year"] = ref.year + 1
+    return dd
+
+
+def doc_date(doc):
+    """문서 기준일: 메일 Date 머리글 → 없으면 None(오늘 기준)."""
+    try:
+        if doc.meta.get("Date"):
+            return parsedate_to_datetime(doc.meta["Date"]).date()
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
 # ---------------------------------------------------------------- 규칙 기반 추출
 
 class Extractor:
-    def __init__(self, docs, predecessor=""):
+    def __init__(self, docs, predecessor="", today=None):
         self.docs = [d for d in docs if not d.error]
+        self.today = today or date.today()
         self.kind = {d.id: classify(d) for d in self.docs}
         self.blocks = {b.id: b for d in self.docs for b in d.blocks}
+        self.ref = {d.id: doc_date(d) or self.today for d in self.docs}
         self.predecessor = predecessor or self.guess_predecessor()
         self.items = {"rnr": [], "schedule": [], "contacts": [], "issues": []}
 
     def guess_predecessor(self):
+        """전임자 추정: 제목·첫 줄의 '○○ 인계/인수인계 (이름)'·'담당 이름'에 큰 가중치,
+        메일 받는 사람, 그다음 본문 언급 횟수. 협의 상대(팀장 등)가 많이 나와도 이기지 않게 한다."""
         cnt = Counter()
         for d in self.docs:
+            heads = [b.text for b in d.blocks[:2]] + [d.relpath]
+            for h in heads:
+                for rx in (r"([가-힣]{2,4})\s*(?:[가-힣]{1,4}\s*)?(?:의\s*)?(?:업무\s*)?(?:인수인계|인계)",
+                           r"(?:인수인계|인계)[^\n(]{0,12}\(\s*([가-힣]{2,4})\s*[,)]",
+                           r"담당\s*(?:자)?\s*[:：]?\s*([가-힣]{2,4})(?![가-힣])",
+                           r"전임자?[_\s:：]*([가-힣]{2,4})(?![가-힣])"):
+                    for m in re.finditer(rx, h):
+                        if is_name(m.group(1)):
+                            cnt[m.group(1)] += 6
             for b in d.blocks:
-                for name, title, _ in find_people(b.text):
+                for name, title, _ in people_in(b.text):
                     cnt[name] += 1
             to = d.meta.get("To", "")
             m = re.match(r"\s*([가-힣]{2,4})\s*<", to)
@@ -152,19 +262,33 @@ class Extractor:
                                 if duty.strip():
                                     self.add("rnr", {"duty": duty.strip(), "detail": ""}, blk, duty.strip())
                             handled.add(blk.id)
+                        else:
+                            # 같은 부서 동료·결재권자도 연락망에 넣는다(결재·업무 협의 대상)
+                            m = re.match(r"([가-힣]{2,4})", cell(i_name).strip())
+                            if m and is_name(m.group(1)):
+                                duty = " / ".join(x.strip() for x in re.split(r"\s*/\s*|\n", cell(i_duty)) if x.strip())
+                                topics = (["결재권자"] if "결재" in duty else []) + ([duty] if duty else [])
+                                self.add("contacts", {"name": m.group(1), "title": cell(i_tpos), "org": _team_of(d),
+                                                      "phones": [], "emails": [], "topics": topics}, blk)
                         continue
                     # 연락처
                     if i_name is not None and (i_phone is not None or i_email is not None):
                         raw = cell(i_name)
-                        name, ttl = raw, cell(i_tpos)
+                        name, ttl, org_hint = raw, cell(i_tpos), ""
+                        ppl = people_in(raw)
                         m = re.match(r"([가-힣]{2,4})\s*(\S+)?", raw)
-                        if m:
+                        if ppl and not (m and m.group(1) == ppl[0][0]):
+                            # '시설운영팀장 이정훈', '(주)한결안전기술 최현우 과장'처럼 소속·직위가 이름 앞뒤에 붙은 칸
+                            name, t2, pos = ppl[0]
+                            ttl = ttl or t2
+                            org_hint = title_first_org(raw, name) or raw[:pos].strip()
+                        elif m:
                             name = m.group(1)
                             ttl = ttl or (m.group(2) or "")
                         topics = [x for x in [cell(i_topic), title] if x]
                         if name and name != self.predecessor:
                             self.add("contacts", {
-                                "name": name, "title": ttl, "org": cell(i_org),
+                                "name": name, "title": ttl, "org": cell(i_org) or org_hint,
                                 "phones": [p for p in find_phones(cell(i_phone))],
                                 "emails": find_emails(cell(i_email)) if i_email is not None else [],
                                 "topics": topics,
@@ -174,7 +298,7 @@ class Extractor:
                         st = cell(i_status)
                         note = cell(i_note)
                         if st and not DONE_WORDS.search(st):
-                            due = extract_dates(note) if note else None
+                            due = dates_in(note, self.ref.get(d.id)) if note else None
                             self.add("issues", {
                                 "title": title, "state": st, "next_action": note,
                                 "due": _due_text(due) if due and due["months"] else "",
@@ -188,7 +312,7 @@ class Extractor:
                         per = cell(i_period)
                         if "~" in per:
                             end = per.split("~")[-1]
-                            dd = extract_dates(end)
+                            dd = dates_in(end, self.ref.get(d.id))
                             if dd["months"]:
                                 self.add("schedule", {**_sched_fields(dd), "task": f"{title} 계약기간 종료 (후속 조치 확인)",
                                                       "related": title, "action": "종료"}, blk, per)
@@ -196,7 +320,7 @@ class Extractor:
         return handled
 
     def schedule_from_text(self, text, blk, related=""):
-        dd = extract_dates(text)
+        dd = dates_in(text, self.ref.get(blk.doc_id))
         act = _action(text)
         if not dd["months"] or not act:
             return None
@@ -223,7 +347,7 @@ class Extractor:
                     related = topic if (is_mail or not topic_words(sent) & topic_words(topic)) else ""
                     self.schedule_from_text(sent, b, related=related if is_mail else "")
                     # 사람 + 전화번호가 함께 나오면 연락처
-                    people = [p for p in find_people(sent) if p[0] != self.predecessor]
+                    people = [p for p in people_in(sent) if p[0] != self.predecessor]
                     phones = find_phones(sent)
                     if people and (phones or re.search(r"내선\s*\d+", sent)):
                         # 전화번호와 가장 가까운 사람을 고른다
@@ -233,22 +357,24 @@ class Extractor:
                         if not phones:
                             m = re.search(r"내선\s*(\d+)", sent)
                             phones = [f"내선 {m.group(1)}"]
-                        orgs = find_orgs(sent)
+                        orgs = [title_first_org(sent, name)] if title_first_org(sent, name) else find_orgs(sent)
                         self.add("contacts", {"name": name, "title": title if title != "님" else "",
                                               "org": orgs[0] if orgs else "", "phones": phones,
                                               "emails": find_emails(sent), "topics": [topic] if is_mail else [_clip(sent, 60)]},
                                  b, sent)
                     elif people and not phones and not is_mail:
                         # 협의 상대만 나오는 문장 → 연락처 후보(번호 없음)
-                        name, title, _ = people[0]
-                        if title not in ("님",) and re.search(r"협의|문의|담당|통보|보고", sent):
+                        name, title, _ = people[-1] if re.search(r"대행|대리\s*[:：]", sent) else people[0]
+                        if title not in ("님",) and re.search(r"협의|문의|담당|통보|보고|대행|결재", sent):
                             orgs = find_orgs(sent)
+                            topic_s = (f"{self.predecessor} 부재 시 업무 대행" if re.search(r"부재.*대행", sent) and self.predecessor
+                                       else _clip(sent, 60))
                             self.add("contacts", {"name": name, "title": title, "org": orgs[0] if orgs else "",
-                                                  "phones": [], "emails": [], "topics": [_clip(sent, 60)]}, b, sent)
+                                                  "phones": [], "emails": [], "topics": [topic_s]}, b, sent)
                     # 현안
                     if (ISSUE_WORDS.search(sent) and not RESOLVED.search(sent)
                             and (_action(sent) or re.search(r"공사|용역|민원|보험|수질|예산", sent))):
-                        dd = extract_dates(sent)
+                        dd = dates_in(sent, self.ref.get(d.id))
                         self.add("issues", {"title": _clip(sent, 70), "state": _state(sent),
                                             "next_action": _next_action(sent),
                                             "due": _due_text(dd) if dd["months"] else "",
@@ -270,10 +396,19 @@ class Extractor:
 
 def _sched_fields(dd):
     return {"months": dd["months"], "day": dd["day"], "recurring": dd["recurring"], "date": dd["date"],
-            "when": dd["label"]}
+            "when": dd["label"], "year": dd.get("year"), "approx": bool(dd.get("approx"))}
+
+
+def _team_of(doc):
+    """'시설운영팀 업무분장표' 같은 제목에서 부서명."""
+    head = " ".join(b.text for b in doc.blocks[:2]) + " " + doc.name
+    m = re.search(r"([가-힣]{2,12}(?:팀|과|실|센터))(?![가-힣])", head)
+    return m.group(1) if m else ""
 
 
 def _due_text(dd):
+    if dd.get("approx"):
+        return dd["label"]
     if dd.get("date"):
         return dd["date"]
     if dd["months"] and dd.get("day"):
@@ -371,6 +506,12 @@ def merge_similar(items, keyfn, threshold):
 def _sched_key(a, b):
     if a["months"] != b["months"]:
         return 0
+    # 표의 서로 다른 행(다른 계약·사업)은 날짜가 같아도 합치지 않는다
+    ra, rb = a.get("related") or "", b.get("related") or ""
+    if ra and rb and ra != rb and not _overlap(topic_words(ra), topic_words(rb)):
+        return 0
+    if a.get("year") and b.get("year") and a["year"] != b["year"]:
+        return 0
     if a.get("day") != b.get("day") and a.get("day") and b.get("day"):
         return 0
     if similarity(a["task"], b["task"]) >= 0.3:
@@ -408,7 +549,8 @@ def _core_topic(it):
 
 # ---------------------------------------------------------------- 확인 필요 표시
 
-def build_flags(sections, kind_of_file):
+def build_flags(sections, kind_of_file, today=None):
+    today = today or date.today()
     flags = []
 
     def flag(t, msg, refs, sources, severity="중"):
@@ -464,6 +606,21 @@ def build_flags(sections, kind_of_file):
             flag("충돌", f"{c['name']} {c.get('title', '')}의 연락처가 자료마다 다릅니다: {', '.join(c['phones'])}"
                  + (" (번호 변경 메모 있음)" if changed else ""), [c["id"]], c["sources"], "상")
 
+    # 기한 지남: 해야 할 일인데 오늘 기준으로 날짜가 지났음
+    for it in sections["schedule"]:
+        if it.get("timing") == "기한 지남":
+            flag("기한 지남", f"'{it['task']}': 기한({_when(it)})이 오늘({today.isoformat()}) 기준으로 지났습니다. 처리 여부를 확인해 주세요.",
+                 [it["id"]], it["sources"], "상")
+    late_quotes = {q["quote"] for it in sections["schedule"] if it.get("timing") == "기한 지남" for q in it["sources"]}
+    for it in sections["issues"]:
+        m = re.match(r"(20\d{2})-(\d{2})-(\d{2})$", it.get("due") or "")
+        if m and date(int(m.group(1)), int(m.group(2)), int(m.group(3))) < today:
+            it["past_due"] = True
+            if any(q["quote"] in late_quotes for q in it["sources"]):
+                continue
+            flag("기한 지남", f"현안 '{it['title']}': 기한({it['due']})이 오늘({today.isoformat()}) 기준으로 지났습니다.",
+                 [it["id"]], it["sources"], "상")
+
     # 누락
     for c in sections["contacts"]:
         if not c["phones"] and not c["emails"]:
@@ -512,10 +669,152 @@ LLM_SYSTEM = """당신은 공공기관 인수인계서 작성을 돕는 도우�
 recurring 은 "매월", "매분기", "매년" 중 하나이거나 빈 문자열입니다."""
 
 
-def llm_extract(llm, docs, predecessor, kind_of):
-    """모델로 문서별 추출. 근거 id 가 실제 블록이 아니면 버린다."""
+RE_FULL = re.compile(r"(20\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})")
+RE_MD_ANY = re.compile(r"(?<![\d.])(\d{1,2})\s*월\s*(\d{1,2})\s*일")
+RE_MD_DOT2 = re.compile(r"(?<![\d.])(\d{1,2})\s*[./]\s*(\d{1,2})(?!\d)")
+RE_MON_ANY = re.compile(r"(?<!\d)(\d{1,2})\s*월")
+RE_MON_RANGE = re.compile(r"(\d{1,2})\s*[~∼\-]\s*(\d{1,2})\s*월")
+
+
+def _block_dates(text, ref=None):
+    """원문 조각에 나오는 월 집합과 (월, 일) 쌍 집합."""
+    months, pairs = set(), set()
+    for rx in (RE_FULL,):
+        for m in rx.finditer(text):
+            pairs.add((int(m.group(2)), int(m.group(3))))
+    for rx in (RE_MD_ANY, RE_MD_DOT2):
+        for m in rx.finditer(text):
+            pairs.add((int(m.group(1)), int(m.group(2))))
+    months.update(mo for mo, _ in pairs)
+    months.update(int(x) for x in RE_MON_ANY.findall(text))
+    for a, b in RE_MON_RANGE.findall(text):
+        months.update(range(int(a), int(b) + 1))
+    for m in RE_ENUM_MONTHS.finditer(text):
+        months.update(int(x) for x in re.findall(r"\d{1,2}", m.group(1)))
+    if re.search(r"매월|매달|월\s*1회", text):
+        months.update(range(1, 13))
+    if re.search(r"분기", text):
+        months.update((3, 6, 9, 12))
+    if "상반기" in text:
+        months.update(range(1, 7))
+    if "하반기" in text:
+        months.update(range(7, 13))
+    months.update(dates_in(text, ref)["months"])
+    return {m for m in months if 1 <= m <= 12}, pairs
+
+
+def _amounts(text, claims=False):
+    """금액 → 정수 집합. claims=True 이면 '원·만·억' 단위나 천 단위 쉼표가 있는 것만(모델 주장 쪽)."""
+    out = set()
+    num = lambda x: int(x.replace(",", "")) if x else 0
+    for m in re.finditer(r"(\d[\d,]*)\s*억(?:\s*(\d[\d,]*)\s*만)?(?:\s*(\d[\d,]*))?", text):
+        out.add(num(m.group(1)) * 100000000 + num(m.group(2)) * 10000 + num(m.group(3)))
+    for m in re.finditer(r"(?<![\d,억])(\d[\d,]*)\s*만\s*원?", text):
+        out.add(num(m.group(1)) * 10000)
+    for m in re.finditer(r"(?<![\d,])(\d{1,3}(?:,\d{3})+)(?![\d,])", text):
+        out.add(num(m.group(1)))
+    for m in re.finditer(r"(?<![\d,.])(\d{4,})\s*원", text):
+        out.add(num(m.group(1)))
+    if not claims:
+        out.update(int(x) for x in re.findall(r"(?<![\d,.\-])\d{5,}(?![\d,.\-])", text))
+    return {a for a in out if a >= 1000}
+
+
+def _phone_set(text):
+    out = {normalize_phone(p) for p in find_phones(text)}
+    out.update(re.findall(r"내선\s*(\d{3,5})", text))
+    return out
+
+
+def _phone_ok(p, known):
+    d = normalize_phone(p)
+    if not d:
+        return True
+    return d in known or any(len(x) >= 3 and len(d) >= 3 and (x.endswith(d) or d.endswith(x)) for x in known)
+
+
+def verify_model_item(sec, it, raw, block_texts, refs):
+    """모델 항목의 핵심 사실(사람·전화·메일·날짜·금액·대상어)이 근거로 든 원문 조각에 실제로 있는지 본다.
+    맞지 않으면 버릴 이유(문자열)를, 맞으면 None을 돌려준다."""
+    text = "\n".join(block_texts)
+    flat = re.sub(r"\s+", "", text)
+    known_phones = _phone_set(text)
+    months, pairs = set(), set()
+    for bt, ref in zip(block_texts, refs):
+        m, p = _block_dates(bt, ref)
+        months |= m
+        pairs |= p
+    fields = {"rnr": ["duty"], "schedule": ["task"], "contacts": ["topics"], "issues": ["title", "next_action", "due", "state"]}[sec]
+    strs = []
+    for f in fields:
+        v = it.get(f)
+        strs.extend(v if isinstance(v, list) else [v or ""])
+    claim = " ".join(str(x) for x in strs if x)
+    # 사람 이름
+    names = [it["name"]] if sec == "contacts" else []
+    names += [n for n, _, _ in people_in(claim)]
+    for n in names:
+        if n and re.sub(r"\s+", "", n) not in flat:
+            return f"이름 '{n}'이 근거 원문에 없음"
+    # 전화번호·메일
+    phones = list(it.get("phones") or []) + find_phones(claim)
+    for p in phones:
+        if not _phone_ok(p, known_phones):
+            return f"전화번호 '{p}'가 근거 원문에 없음"
+    for e in list(it.get("emails") or []) + find_emails(claim):
+        if e.lower() not in text.lower():
+            return f"메일 '{e}'이 근거 원문에 없음"
+    # 날짜
+    claims = []
+    if sec == "schedule":
+        claims += [(m, it.get("day")) for m in it["months"][:1]] + [(m, None) for m in it["months"][1:]]
+    for x in strs:
+        if not x:
+            continue
+        iso = re.match(r"(20\d{2})-(\d{2})-(\d{2})$", str(x).strip())
+        if iso:
+            claims.append((int(iso.group(2)), int(iso.group(3))))
+            continue
+        for m in RE_FULL.finditer(str(x)):
+            claims.append((int(m.group(2)), int(m.group(3))))
+        for m in RE_MD_ANY.finditer(str(x)):
+            claims.append((int(m.group(1)), int(m.group(2))))
+        if not claims or sec != "schedule":
+            for mo in RE_MON_ANY.findall(str(x)):
+                claims.append((int(mo), None))
+    for mo, dy in claims:
+        if not 1 <= mo <= 12:
+            continue
+        if mo not in months:
+            return f"시기 '{mo}월'이 근거 원문에 없음"
+        if dy and (mo, dy) not in pairs:
+            return f"날짜 '{mo}월 {dy}일'이 근거 원문에 없음"
+    # 금액
+    have = _amounts(text)
+    for a in _amounts(claim, claims=True):
+        if a not in have:
+            return f"금액 '{a:,}원'이 근거 원문에 없음"
+    # 대상어: 할 일·현안·업무 문구의 낱말이 하나라도 원문에 있어야 한다
+    if sec != "contacts":
+        main = str(it.get({"rnr": "duty", "schedule": "task", "issues": "title"}[sec]) or "")
+        words = [w for w in topic_list(main) if not re.search(r"\d", w)]
+        if words and not any(w in flat or (len(w) >= 3 and w[:-1] in flat) for w in words):
+            return f"'{_clip(main, 30)}'의 내용이 근거 원문에 없음"
+    return None
+
+
+def _as_list(v):
+    if v is None or v == "":
+        return []
+    return v if isinstance(v, list) else [v]
+
+
+def llm_extract(llm, docs, predecessor, kind_of, refs=None):
+    """모델로 문서별 추출. 근거 id 가 실제 블록이 아니거나, 핵심 사실이 그 블록 원문에 없으면 버리고 기록한다."""
     items = {"rnr": [], "schedule": [], "contacts": [], "issues": []}
     errors = []
+    filtered = []
+    refs = refs or {}
     blocks = {b.id: b for d in docs for b in d.blocks}
     for d in docs:
         if d.error or not d.blocks:
@@ -542,8 +841,13 @@ def llm_extract(llm, docs, predecessor, kind_of):
                 for raw in out.get(sec_in, []) or []:
                     if not isinstance(raw, dict):
                         continue
-                    ids = [i for i in raw.get("block_ids", []) if i in blocks]
+                    cited = raw.get("block_ids", []) or []
+                    cited = cited if isinstance(cited, list) else [cited]
+                    ids = [i for i in cited if isinstance(i, str) and i in blocks]
+                    label = str(raw.get("duty") or raw.get("task") or raw.get("name") or raw.get("title") or "")
                     if not ids:
+                        filtered.append({"section": sec, "label": _clip(label, 60), "reason": "근거 위치가 실제 자료에 없음",
+                                         "sources": []})
                         continue
                     srcs = [blocks[i].cite() for i in ids]
                     it = {"id": new_id(sec[:2]), "status": "초안", "sources": srcs,
@@ -553,7 +857,7 @@ def llm_extract(llm, docs, predecessor, kind_of):
                         if not it["duty"]:
                             continue
                     elif sec == "schedule":
-                        months = [int(m) for m in raw.get("months", []) if str(m).isdigit() and 1 <= int(m) <= 12]
+                        months = [int(m) for m in _as_list(raw.get("months")) if str(m).isdigit() and 1 <= int(m) <= 12]
                         if not months or not raw.get("task"):
                             continue
                         day = raw.get("day")
@@ -563,28 +867,146 @@ def llm_extract(llm, docs, predecessor, kind_of):
                     elif sec == "contacts":
                         if not raw.get("name") or raw.get("name") == predecessor:
                             continue
-                        it.update(name=str(raw["name"]), title=raw.get("title") or "", org=raw.get("org") or "",
-                                  phones=[p for p in raw.get("phones", []) if p], emails=[e for e in raw.get("emails", []) if e],
-                                  topics=[t for t in raw.get("topics", []) if t])
+                        it.update(name=str(raw["name"]), title=str(raw.get("title") or ""), org=str(raw.get("org") or ""),
+                                  phones=[str(p) for p in _as_list(raw.get("phones")) if p],
+                                  emails=[str(e) for e in _as_list(raw.get("emails")) if e],
+                                  topics=[str(t) for t in _as_list(raw.get("topics")) if t])
                     else:
                         if not raw.get("title"):
                             continue
                         it.update(title=str(raw["title"]), state=raw.get("state") or "확인 필요",
                                   next_action=raw.get("next_action") or "", due=raw.get("due") or "", topic="")
+                    reason = verify_model_item(sec, it, raw, [blocks[i].text for i in ids],
+                                               [refs.get(blocks[i].doc_id) for i in ids])
+                    if reason:
+                        filtered.append({"section": sec, "label": _clip(label, 60), "reason": reason, "sources": srcs[:2]})
+                        continue
+                    if sec == "schedule":
+                        it.update(year=None, approx=False)
                     items[sec].append(it)
-    return items, errors
+    uniq = {}
+    for f in filtered:
+        k = (f["section"], f["label"], f["reason"])
+        if k in uniq:
+            uniq[k]["count"] += 1
+        else:
+            uniq[k] = dict(f, count=1)
+    return items, errors, list(uniq.values())
+
+
+# ---------------------------------------------------------------- 일정 다듬기 (반복 주기·지난 일·메모 노하우)
+
+EXPLICIT_YEARLY = re.compile(r"매년|연\s*1회|해마다|매해")
+DONE_RX = re.compile(r"완료(?!\s*(?:해야|할|예정|필요|하여|하도록|목표|까지|요망))|적합\s*판정|적합\s*받음|실시\s*결과|검사일\s*[:：]|시행\s*완료|제출\s*함")
+INTENT_RX = re.compile(r"예정|까지|필요|해야|할 것|바랍니다|부탁|주십시오|요청|의뢰|게시|확정하고자|협의")
+
+
+def apply_cadence(schedule, ex):
+    """'정기'만 보고 매년으로 잡힌 일정: 같은 업무가 다른 곳에서 '매월'로 나오면 매월로 고친다.
+    (예: 수질검사 보고서의 '다음 정기검사 10.6.' ↔ 계획서 '수영장 수질검사: 매월 10일까지')"""
+    monthly = [b for b in ex.blocks.values() if re.search(r"매월|매달", b.text)]
+    for it in schedule:
+        if it.get("recurring") != "매년" or it.get("by") == "model":
+            continue
+        quotes = " ".join(src["quote"] for src in it["sources"])
+        if EXPLICIT_YEARLY.search(quotes):
+            continue
+        docs = {ex.blocks[src["block_id"]].doc_id for src in it["sources"] if src.get("block_id") in ex.blocks}
+        topics = set()
+        for d in ex.docs:
+            if d.id in docs:
+                topics |= {w for w in topic_words(doc_topic(d)) if not re.search(r"\d", w)}
+        topics |= {w for w in topic_words(it["task"]) if not re.search(r"\d|정기", w)}
+        for b in monthly:
+            words = {w for w in topic_words(b.text) if not re.search(r"\d", w)}
+            if topics and _overlap(topics, words):
+                it["recurring"] = "매월"
+                it["months"] = list(range(1, 13))
+                it["when"] = (it.get("when") or "") + " (같은 업무가 매월 반복됨)"
+                if all(src.get("block_id") != b.id for src in it["sources"]):
+                    it["sources"].append(b.cite())
+                break
+
+
+def schedule_timing(it, today):
+    """'완료'(이미 끝난 일) / '지난 일'(날짜가 지난 기록) / '기한 지남'(해야 할 일인데 날짜가 지남) / ''."""
+    quotes = it["task"] + " " + " ".join(src["quote"] for src in it.get("sources", [])[:1])
+    if it.get("action") != "종료" and DONE_RX.search(it["task"]):
+        return "완료"
+    when = None
+    if it.get("date"):
+        try:
+            when = date.fromisoformat(it["date"])
+        except ValueError:
+            when = None
+    elif it.get("year") and it.get("months") and not it.get("recurring"):
+        mo = it["months"][-1]
+        when = date(it["year"], mo, 28)
+    if when is None or when >= today:
+        return ""
+    if it.get("recurring") in ("매년", "매분기") and not INTENT_RX.search(quotes):
+        return "지난 일"  # 올해 몫은 지났고, 반복 업무라 내년에도 한다
+    if INTENT_RX.search(quotes) and not DONE_RX.search(quotes):
+        return "기한 지남"
+    return "지난 일"
+
+
+NOTE_RX = re.compile(r"이내|많은\s*것|양식|공유\s*폴더|폴더에|보관\s*위치|주의|노하우|요령|비밀번호|자주")
+
+
+def attach_notes(sections, ex):
+    """메모의 노하우·처리 기준(예: '민원 답변은 접수 후 7일 이내', '민원 많은 것: …', '양식은 공유폴더 …')을
+    가장 가까운 담당업무의 '세부 내용·메모'에 근거와 함께 붙인다. 맞는 업무가 없으면 '업무 참고사항'으로 모은다."""
+    rnr = sections["rnr"]
+    leftovers = []
+    for d in ex.docs:
+        memo = ex.kind.get(d.id) == "개인메모"
+        for b in d.blocks:
+            if b.loc.startswith("머리글"):
+                continue
+            for piece in split_sentences(re.sub(r"^[\-•·*▪○□◦●]+\s*", "", b.text)):
+                piece = piece.strip().rstrip(".")
+                if len(piece) < 6 or not NOTE_RX.search(piece):
+                    continue
+                if not memo and "이내" not in piece:
+                    continue
+                words = {w for w in topic_words(piece) if not re.search(r"\d", w)}
+                best, score = None, 0
+                for r in rnr:
+                    dw = {w for w in topic_words(r["duty"]) if not re.search(r"\d", w)}
+                    sc = sum(1 for w in words if any(w == x or (len(w) >= 3 and len(x) >= 3 and (w in x or x in w)) for x in dw))
+                    if sc > score:
+                        best, score = r, sc
+                target = best
+                if target is None:
+                    leftovers.append((piece, b))
+                    continue
+                if piece in (target.get("detail") or ""):
+                    continue
+                target["detail"] = (target["detail"] + " / " if target.get("detail") else "") + piece
+                if all((s_["file"], s_["loc"]) != (b.file, b.loc) for s_ in target["sources"]):
+                    target["sources"].append(b.cite(piece))
+                o = ex.origin(b.doc_id)
+                if o not in target["origin"]:
+                    target["origin"].append(o)
+    if leftovers:
+        rnr.append({"id": new_id("rn"), "duty": "업무 참고사항(메모·노하우)", "status": "초안",
+                    "detail": " / ".join(p for p, _ in leftovers),
+                    "sources": [b.cite(p) for p, b in leftovers],
+                    "origin": sorted({ex.origin(b.doc_id) for _, b in leftovers})})
 
 
 # ---------------------------------------------------------------- 전체 실행
 
-def analyze(docs, predecessor="", llm=None):
+def analyze(docs, predecessor="", llm=None, today=None):
     t0 = time.time()
-    ex = Extractor(docs, predecessor)
+    ex = Extractor(docs, predecessor, today)
     raw = ex.run()
     engine = "규칙 기반"
     llm_errors = []
+    filtered = []
     if llm is not None and llm.enabled:
-        m_items, llm_errors = llm_extract(llm, ex.docs, ex.predecessor, ex.kind)
+        m_items, llm_errors, filtered = llm_extract(llm, ex.docs, ex.predecessor, ex.kind, ex.ref)
         for k in raw:
             raw[k] = raw[k] + m_items[k]
         engine = f"규칙 기반 + 모델({llm.label})"
@@ -605,9 +1027,14 @@ def analyze(docs, predecessor="", llm=None):
                                         "status": "초안", "sources": it["sources"][:2], "origin": it["origin"]})
     for c in sections["contacts"]:
         c.pop("phone_sources", None)
-    sections["schedule"].sort(key=lambda s: (0 if s.get("recurring") == "매월" else 1, s["months"][0], s.get("day") or 0))
+    apply_cadence(sections["schedule"], ex)
+    for it in sections["schedule"]:
+        it["timing"] = schedule_timing(it, ex.today)
+    attach_notes(sections, ex)
+    sections["schedule"].sort(key=lambda s: (0 if s.get("recurring") == "매월" else 1, s.get("year") or 0,
+                                             s["months"][0], s.get("day") or 0))
     sections["issues"].sort(key=lambda s: (_due_sort(s.get("due")), s["title"]))
-    flags = build_flags(sections, ex.kind)
+    flags = build_flags(sections, ex.kind, ex.today)
     docs_info = []
     for d in docs:
         info = d.to_dict()
@@ -620,7 +1047,8 @@ def analyze(docs, predecessor="", llm=None):
                 + ", ".join(f"{k} {v}" for k, v in kinds.items())
                 + f")에서 담당업무 {len(sections['rnr'])}건, 일정 {len(sections['schedule'])}건, "
                 f"연락처 {len(sections['contacts'])}명, 현안 {len(sections['issues'])}건을 찾았습니다. "
-                f"확인이 필요한 사항은 {len(flags)}건입니다.")
+                f"확인이 필요한 사항은 {len(flags)}건입니다."
+                + (f" 모델이 낸 항목 중 원문과 맞지 않는 {sum(f['count'] for f in filtered)}건은 버렸습니다." if filtered else ""))
     if llm is not None and llm.enabled:
         try:
             o = llm.json("공공기관 인수인계서의 '업무 개요'를 3문장 이내로 씁니다. 주어진 항목에 없는 내용은 쓰지 않습니다. 출력: {\"overview\":\"...\"}",
@@ -638,6 +1066,8 @@ def analyze(docs, predecessor="", llm=None):
         "flags": flags,
         "docs": docs_info,
         "llm_errors": llm_errors,
+        "filtered": filtered,
+        "today": ex.today.isoformat(),
     }
 
 
