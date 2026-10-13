@@ -945,15 +945,48 @@ function setupSkin() {
     $("#skin-css").href = `/skin-${s}.css`;
     try { localStorage.setItem("baton:skin", s); } catch (e) {}
     paint();
+    $("#skin-css").onload = () => dispatchEvent(new Event("resize"));
   }));
   paint();
+}
+
+// 트랙 연출(브랜드 스킨에서만 보임): 스크롤 진행도를 CSS 변수로 넘기고, 옆 메뉴의 바통이 고른 화면으로 넘어간다
+function setupTrack() {
+  const root = document.documentElement, nav = $("nav.tabs");
+  const baton = el("span", { class: "nav-baton", "aria-hidden": "true" });
+  nav.prepend(baton);
+  let ticking = false;
+  const onScroll = () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      ticking = false;
+      const max = root.scrollHeight - innerHeight;
+      root.style.setProperty("--sp", max > 0 ? Math.min(scrollY / max, 1).toFixed(4) : "0");
+      root.style.setProperty("--sy", scrollY + "px");
+    });
+  };
+  const place = () => {
+    const b = $("nav.tabs button.on");
+    if (!b) return;
+    const row = getComputedStyle(nav).flexDirection === "row";
+    baton.style.transform = row ? `translateX(${b.offsetLeft}px)` : `translateY(${b.offsetTop}px)`;
+    baton.style.width = row ? b.offsetWidth + "px" : "";
+    baton.style.height = row ? "" : b.offsetHeight + "px";
+    onScroll();
+  };
+  addEventListener("scroll", onScroll, { passive: true });
+  addEventListener("resize", place);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) $$(".hero-track").forEach(x => x.pauseAnimations && x.pauseAnimations());
+  return place;
 }
 
 let goTab;
 function renderAll() { renderDraft(); renderCalendar(); renderFlags(); renderDocs(); renderRadar(); renderNetwork(); PHOTO_Q = ""; renderPhotos(); }
 document.addEventListener("DOMContentLoaded", async () => {
   setupStart(); setupAsk(); setupManual(); setupSkin();
-  goTab = setupTabs(id => { document.body.dataset.tab = id; if (id === "history") renderHistory(); if (id === "form") renderForm(); });
+  const placeBaton = setupTrack();
+  goTab = setupTabs(id => { document.body.dataset.tab = id; requestAnimationFrame(placeBaton); if (id === "history") renderHistory(); if (id === "form") renderForm(); });
   $("#cur-h").onchange = e => e.target.value && select(e.target.value);
   await refreshList();
 });

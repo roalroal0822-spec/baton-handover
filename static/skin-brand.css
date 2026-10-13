@@ -34,13 +34,8 @@ body { letter-spacing: -.02em; }
 .masthead .skin-sw button:hover { color: #fff; }
 .masthead .skin-sw button[aria-pressed="true"] { background: var(--volt); color: var(--night); box-shadow: none; }
 
-/* 머리 영역: 트랙 곡선 + 바통 띠 */
+/* 머리 영역: 바통 띠(트랙 곡선은 아래 '트랙 모티프'에서) */
 header.top { background: var(--night); color: #fff; padding-top: 64px; padding-bottom: 64px; }
-header.top::before { content: ""; position: absolute; z-index: -1; right: -220px; top: -260px; width: 980px; height: 760px; border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, .10);
-  box-shadow: 0 0 0 46px var(--night), 0 0 0 48px rgba(255, 255, 255, .08), 0 0 0 94px var(--night), 0 0 0 96px rgba(255, 255, 255, .06),
-    0 0 0 142px var(--night), 0 0 0 144px rgba(255, 255, 255, .045);
-  pointer-events: none; }
 header.top::after { content: ""; position: absolute; z-index: -1; left: 0; right: 0; bottom: 0; height: 6px;
   background: linear-gradient(90deg, var(--brand) 0%, #8b6dff 45%, var(--volt) 100%); }
 header.top .eyebrow { padding: 6px 12px; border-radius: 99px; background: rgba(255, 255, 255, .08); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16); }
@@ -55,10 +50,9 @@ header.top .highlights li::before { color: var(--volt); }
 header.top .highlights b { color: #fff; }
 header.top .highlights span { color: rgba(255, 255, 255, .62); }
 
-/* 옆 메뉴: 선택 항목은 짙은 알약 + 형광 번호 */
+/* 옆 메뉴: 선택 표시는 '바통'(아래 트랙 모티프)이 맡고, 번호는 형광 */
 nav.tabs .nav-group { text-transform: none; color: var(--faint); }
 nav.tabs button, nav.tabs button:hover { border-radius: 99px; }
-nav.tabs.inked button.on, nav.tabs button.on { background: var(--night); color: #fff; }
 nav.tabs button.on .n { background: var(--volt); color: var(--night); }
 nav.tabs button.on .n.i { color: var(--volt); }
 
@@ -88,3 +82,61 @@ input, textarea, select { border-radius: 12px; }
 .flow-next { background: var(--night); color: rgba(255, 255, 255, .85); }
 .flow-next b { color: var(--volt); }
 .foot { background: var(--night); color: rgba(255, 255, 255, .55); border: 0; }
+
+/* ── 트랙 모티프: 페이지 전체를 이어달리기 트랙처럼 ──
+   스크롤 진행도(--sp, 0~1)와 스크롤 거리(--sy)는 app.js 가 넣는다. 움직임 줄이기 설정이면 공통 규칙으로 애니메이션이 꺼진다. */
+
+/* 1) 화면 맨 위 레인: 스크롤한 만큼 바통이 달리고, 지나온 구간은 빛이 남는다 */
+.track-progress { display: block; position: fixed; z-index: 40; left: 0; right: 0; top: 0; height: 4px; pointer-events: none;
+  background: rgba(91, 61, 245, .14); }
+.track-progress::before { content: ""; position: absolute; inset: 0; transform-origin: left; transform: scaleX(var(--sp, 0));
+  background: linear-gradient(90deg, rgba(91, 61, 245, .55), rgba(212, 255, 61, .75)); }
+.track-progress i { position: absolute; left: 0; top: -2px; width: 56px; height: 8px; border-radius: 99px;
+  background: linear-gradient(90deg, var(--brand), var(--volt)); box-shadow: 0 0 12px rgba(212, 255, 61, .7);
+  transform: translateX(calc(var(--sp, 0) * (100vw - 56px))); }
+
+/* 2) 바탕의 트랙 곡선: 카드 바깥 여백에 은은하게, 스크롤보다 느리게 움직인다 */
+.track-bg { display: block; position: fixed; z-index: -1; right: -58vw; bottom: -46vh; width: 112vw; height: 70vw; color: #e3dff0;
+  pointer-events: none; transform: translateY(calc(var(--sy, 0px) * -.05)); }
+.track-bg svg { width: 100%; height: 100%; display: block; }
+.track-bg path { fill: none; stroke: currentColor; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+
+/* 3) 머리 영역 트랙: 레인이 그려지며 나타나고, 바통 하나가 계속 돈다 */
+header.top .hero-track { display: block; position: absolute; z-index: -1; right: -180px; top: calc(50% - 311px); width: 1000px; height: 622px;
+  transform: translateY(calc(var(--sy, 0px) * .3)); pointer-events: none; }
+.hero-track .ln { fill: none; stroke: rgba(255, 255, 255, .1); stroke-width: 1.5; stroke-dasharray: 1; stroke-dashoffset: 1;
+  animation: lane-draw 1.8s var(--ease) forwards; }
+.hero-track .ln0 { stroke: rgba(255, 255, 255, .18); }
+.hero-track .ln1 { animation-delay: .12s; } .hero-track .ln2 { animation-delay: .24s; } .hero-track .ln3 { animation-delay: .36s; }
+.hero-track .ln-run { fill: none; stroke: none; }
+.hero-track .runner rect { fill: var(--volt); filter: drop-shadow(0 0 6px rgba(212, 255, 61, .85)); }
+@keyframes lane-draw { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .hero-track .ln { stroke-dashoffset: 0; } }
+
+/* 4) 옆 메뉴: 고른 화면으로 바통이 미끄러지듯 넘어간다 */
+nav.tabs .nav-baton { display: block; position: absolute; z-index: 0; left: 0; top: 0; width: 100%; height: 0; border-radius: 99px;
+  background: var(--night); pointer-events: none;
+  transition: transform .55s var(--ease), width .55s var(--ease), height .55s var(--ease); }
+nav.tabs .nav-baton::after { content: ""; position: absolute; right: 12px; top: 50%; width: 20px; height: 4px; margin-top: -2px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--brand), var(--volt)); }
+nav.tabs button { position: relative; z-index: 1; }
+nav.tabs.inked button.on, nav.tabs button.on, nav.tabs button.on:hover { background: transparent; color: #fff; }
+@media (max-width: 1100px) { nav.tabs .nav-baton { top: 8px; bottom: 8px; height: auto; } nav.tabs .nav-baton::after { display: none; } }
+
+/* 5) 카드가 나타날 때: 왼쪽에서 바통을 넘겨받듯 들어오고, 윗변을 바통 띠가 한 번 훑고 지나간다 */
+.rv { transform: translateX(-24px); }
+.rv.in { transform: none; }
+section.tab > .panel, #m-out > .panel { position: relative; }
+section.tab > .panel.rv::before, #m-out > .panel.rv::before { content: ""; position: absolute; left: 24px; right: 24px; top: 0; height: 3px;
+  border-radius: 0 0 3px 3px; background: linear-gradient(90deg, var(--brand), var(--volt)); transform: scaleX(0); transform-origin: left; opacity: 0; }
+section.tab > .panel.rv.in::before, #m-out > .panel.rv.in::before { animation: handoff 1.2s var(--ease) .1s both; }
+@keyframes handoff { 0% { transform: scaleX(0); opacity: 1; } 55% { transform: scaleX(1); opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
+
+/* 6) 레이더 타임라인은 두 줄 레인 위를 달린다 */
+.tl-items { border-left: 3px double var(--line-strong); }
+.tl-dot { left: -27.5px; }
+
+/* 7) 바닥글은 결승선 */
+.foot { position: relative; padding-top: 38px; }
+.foot::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 12px; opacity: .9;
+  background: repeating-conic-gradient(#fff 0 25%, var(--night) 0 50%) 0 0 / 12px 12px; }
