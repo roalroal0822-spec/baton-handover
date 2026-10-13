@@ -70,6 +70,9 @@ def to_png(data, max_side=MAX_SIDE):
     return buf.getvalue(), w, h, taken
 
 
+_LANGS = {}
+
+
 def _tesseract(png):
     exe = shutil.which("tesseract")
     if not exe:
@@ -78,9 +81,12 @@ def _tesseract(png):
         src = os.path.join(d, "in.png")
         with open(src, "wb") as f:
             f.write(png)
-        langs = subprocess.run([exe, "--list-langs"], capture_output=True, text=True, timeout=20).stdout
-        lang = "kor+eng" if "kor" in langs else "eng"
-        r = subprocess.run([exe, src, "stdout", "-l", lang], capture_output=True, timeout=120)
+        if exe not in _LANGS:  # 설치된 언어 목록은 한 번만 확인한다
+            _LANGS[exe] = subprocess.run([exe, "--list-langs"], capture_output=True, text=True, timeout=20).stdout
+        lang = "kor+eng" if "kor" in _LANGS[exe] else "eng"
+        # OpenMP 다중 스레드는 다른 작업과 CPU를 다툴 때 오히려 크게 느려진다: 한 스레드로 돌린다
+        env = dict(os.environ, OMP_THREAD_LIMIT="1")
+        r = subprocess.run([exe, src, "stdout", "-l", lang], capture_output=True, timeout=120, env=env)
         if r.returncode != 0:
             raise RuntimeError(r.stderr.decode("utf-8", "replace")[:200])
         return r.stdout.decode("utf-8", "replace")
