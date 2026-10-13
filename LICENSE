@@ -1,0 +1,13 @@
+업무바통(인수인계 도우미) — 저작권 및 이용 안내
+
+Copyright (c) 2026 【기관명 · 팀명】
+
+1. 이 저장소에서 참가팀이 직접 작성한 소스코드·문서의 저작권은 참가팀(소속 기관)에 있습니다.
+2. 「2026년 공공 AI 대전환 챌린지」 공고 7항(권리 및 정식활용 연계)에 따라, 수상 시 행정안전부는
+   이 산출물을 복제·수정·배포·2차적 저작물 작성·범정부 공동활용 도구로의 구축·서비스(위탁 개발업체 사용 포함)
+   범위에서 기간 제한 없이 무상으로 사용할 수 있습니다.
+3. 함께 쓰는 외부 구성요소는 각자의 라이선스를 따릅니다(README의 '외부 구성요소와 라이선스' 표 참고).
+   - python-hwpx: Apache-2.0 / lxml·pypdf: BSD-3-Clause / openpyxl·python-docx: MIT / olefile: BSD / Pillow: MIT-CMU
+   - Pretendard 글꼴(static/fonts/): SIL Open Font License 1.1 (static/fonts/OFL-Pretendard.txt)
+   - Tesseract OCR(선택, 저장소에 넣지 않음): Apache-2.0
+   재배포가 제한되는 구성요소는 없습니다.

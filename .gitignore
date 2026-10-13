@@ -1,0 +1,10 @@
+data/
+.venv/
+__pycache__/
+*.pyc
+config.json
+verify_report.md
+build/
+dist/
+*.spec
+제출/
