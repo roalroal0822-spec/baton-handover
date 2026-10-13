@@ -23,6 +23,12 @@
 - **실행 파일(.exe) 만들기(선택)**: Windows PC에서 `tools\build_exe.bat` 실행 → `dist\baton-handover\baton-handover.exe` (이 실행 파일 만들기는 Windows 환경에서 아직 시험하지 못했습니다)
 - 종료: 실행 창에서 `Ctrl+C`
 
+## 화면 스타일 두 가지
+
+머리 줄의 **정부표준 / 브랜드** 스위치로 바꿉니다(고른 값은 브라우저에 기억). 주소에 `?skin=brand` 또는 `?skin=krds`를 붙여도 됩니다.
+- **정부표준**: 정부 누리집 디자인 시스템(KRDS)의 색·간격·모서리 규칙을 따른 차분한 화면(기본값). 정부 상징·부처 로고는 쓰지 않습니다.
+- **브랜드**: 이어달리기 트랙과 바통을 모티프로 한 업무바통 고유 스타일(짙은 머리 영역, 보라→연두 바통 띠).
+
 ## 주요 기능
 
 ### 기본기능
@@ -155,7 +161,7 @@ photos.py           포토 아카이브(사진 모으기·줄인 사본·키워�
 engine.py           기능 로직
 qa.py               기능 로직
 report.py           기능 로직 (인수인계서·매뉴얼·바통 파일·.ics 만들기)
-static/             화면(HTML·JS·theme.css 화면 테마·글꼴, 외부 라이브러리 없음)
+static/             화면(HTML·JS·theme.css 화면 뼈대·skin-krds.css 정부표준풍·skin-brand.css 브랜드형·글꼴, 외부 라이브러리 없음)
 core/               공통 모듈: 문서 읽기(hwpx·hwp·docx·pptx·pdf·xlsx·eml·txt), 검색, 모델 연결, 문서 내보내기(hwpx·docx·md), 저장소, 웹 서버
 sample_data/        모의자료
 tools/              모델 검증 도구, 가짜 모델 서버, 모의자료 생성기

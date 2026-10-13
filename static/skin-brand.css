@@ -1,0 +1,90 @@
+/* 스킨 ② 브랜드형 '트랙': 이어달리기 트랙과 바통을 모티프로 한 업무바통 고유 스타일.
+   짙은 남보라 바탕의 머리 영역에 트랙 곡선, 보라(바통) → 형광 연두(결승선) 띠, 굵은 글자. 본문은 밝게 두어 오래 봐도 편하게. */
+:root {
+  --bg: #f3f2f8; --panel: #fff; --ink: #15131f; --ink-2: #2f2c3d; --muted: #615d73; --faint: #8e8aa0;
+  --line: #e7e5ef; --line-strong: #d0cddc; --fill: #efedf6; --fill-2: #f8f7fc;
+  --brand: #5b3df5; --brand-strong: #4527d9; --brand-soft: #efebff; --brand-ink: #4a2fd8; --on-brand: #fff;
+  --night: #15131f; --night-2: #221f33; --volt: #d4ff3d;
+  --ok: #12804f; --ok-soft: #e6f6ee; --warn: #8f5a00; --warn-soft: #fff2d9; --warn-line: #f3d9a3;
+  --bad: #e0342f; --bad-soft: #fdeeed; --bad-line: #f6c7c5; --hl: #fbffe3;
+  --radius: 18px; --radius-sm: 12px; --radius-xs: 8px;
+  --shadow: 0 1px 0 rgba(21, 19, 31, .04), 0 8px 28px rgba(21, 19, 31, .06);
+  --shadow-lg: 0 24px 64px rgba(21, 19, 31, .28);
+  --focus: 0 0 0 3px rgba(91, 61, 245, .4);
+}
+body { letter-spacing: -.02em; }
+::selection { background: var(--volt); color: var(--ink); }
+
+/* 맨 위 띠·머리 줄: 짙은 바탕 */
+.gov-strip { background: #0c0b13; color: rgba(255, 255, 255, .6); border: 0; }
+.gov-strip b { color: #fff; font-weight: 600; }
+.masthead { background: var(--night); border-bottom: 1px solid rgba(255, 255, 255, .08); }
+.masthead .ms-mark { background: var(--volt); color: var(--night); border-radius: 10px; transform: rotate(-8deg); }
+.masthead b { color: #fff; font-weight: 900; letter-spacing: -.04em; }
+.masthead .ms-sub { color: rgba(255, 255, 255, .55); border-left-color: rgba(255, 255, 255, .18); }
+.masthead select { background-color: var(--night-2); color: #fff; }
+.masthead select:hover:not(:focus) { background-color: #2c2842; }
+.masthead select:focus { background-color: var(--night-2); }
+.masthead .llm-badge { background: var(--night-2); color: rgba(255, 255, 255, .82); }
+.masthead .llm-badge:hover { background: #2c2842; }
+.masthead .llm-badge.on::before { background: var(--volt); }
+.masthead .pv-badge { background: rgba(212, 255, 61, .12); color: var(--volt); }
+.masthead .skin-sw { background: var(--night-2); }
+.masthead .skin-sw button { color: rgba(255, 255, 255, .6); }
+.masthead .skin-sw button:hover { color: #fff; }
+.masthead .skin-sw button[aria-pressed="true"] { background: var(--volt); color: var(--night); box-shadow: none; }
+
+/* 머리 영역: 트랙 곡선 + 바통 띠 */
+header.top { background: var(--night); color: #fff; padding-top: 64px; padding-bottom: 64px; }
+header.top::before { content: ""; position: absolute; z-index: -1; right: -220px; top: -260px; width: 980px; height: 760px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .10);
+  box-shadow: 0 0 0 46px var(--night), 0 0 0 48px rgba(255, 255, 255, .08), 0 0 0 94px var(--night), 0 0 0 96px rgba(255, 255, 255, .06),
+    0 0 0 142px var(--night), 0 0 0 144px rgba(255, 255, 255, .045);
+  pointer-events: none; }
+header.top::after { content: ""; position: absolute; z-index: -1; left: 0; right: 0; bottom: 0; height: 6px;
+  background: linear-gradient(90deg, var(--brand) 0%, #8b6dff 45%, var(--volt) 100%); }
+header.top .eyebrow { padding: 6px 12px; border-radius: 99px; background: rgba(255, 255, 255, .08); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16); }
+header.top .eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--volt); box-shadow: 0 0 0 4px rgba(212, 255, 61, .2); }
+header.top h1 { font-size: 76px; font-weight: 900; letter-spacing: -.06em; color: #fff; }
+header.top .hero::after { content: ""; display: block; width: 168px; height: 12px; margin-top: 22px; border-radius: 99px; order: 3;
+  background: linear-gradient(90deg, var(--brand), var(--volt)); transform: skewX(-24deg); animation: rise .9s var(--ease) .26s both; }
+header.top .sub { color: rgba(255, 255, 255, .78); order: 2; }
+header.top .highlights li { background: rgba(255, 255, 255, .05); border-radius: 16px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); }
+header.top .highlights li:hover { background: rgba(255, 255, 255, .09); transform: translateY(-3px); box-shadow: inset 0 0 0 1px rgba(212, 255, 61, .5); }
+header.top .highlights li::before { color: var(--volt); }
+header.top .highlights b { color: #fff; }
+header.top .highlights span { color: rgba(255, 255, 255, .62); }
+
+/* 옆 메뉴: 선택 항목은 짙은 알약 + 형광 번호 */
+nav.tabs .nav-group { text-transform: none; color: var(--faint); }
+nav.tabs button, nav.tabs button:hover { border-radius: 99px; }
+nav.tabs.inked button.on, nav.tabs button.on { background: var(--night); color: #fff; }
+nav.tabs button.on .n { background: var(--volt); color: var(--night); }
+nav.tabs button.on .n.i { color: var(--volt); }
+
+/* 카드·버튼: 둥글고 굵게 */
+.panel { border: 0; }
+.panel h2 { font-weight: 800; letter-spacing: -.04em; }
+button, .btn { border-radius: 99px; }
+button.primary { box-shadow: 0 6px 16px rgba(91, 61, 245, .28); }
+button.primary:hover { box-shadow: 0 8px 20px rgba(91, 61, 245, .36); }
+.chip { border-radius: 99px; }
+.tag { border-radius: 99px; }
+input, textarea, select { border-radius: 12px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; position: relative; overflow: hidden; }
+.stat::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: linear-gradient(180deg, var(--brand), var(--volt)); }
+.stat b { color: var(--ink); font-weight: 900; }
+.dz { border-color: #c9bffc; background: linear-gradient(180deg, var(--brand-soft) 0, var(--panel) 100%); border-radius: 22px; }
+.dz-icon { border-radius: 16px; box-shadow: 0 10px 24px rgba(91, 61, 245, .35); }
+.av-head .avatar { background: var(--night); color: var(--volt); }
+.msg.me { background: var(--night); }
+.net-center circle { fill: var(--night); }
+.net-center text { fill: var(--volt); }
+.net-edge.on { stroke: var(--brand); }
+.relay .gen.now { background: var(--night); border-color: var(--night); color: rgba(255, 255, 255, .7); }
+.relay .gen.now b { color: var(--volt); }
+.relay .arrow { height: 3px; background: linear-gradient(90deg, var(--brand), var(--volt)); }
+.flow .fstep.now { box-shadow: 0 0 0 2px var(--brand); }
+.flow-next { background: var(--night); color: rgba(255, 255, 255, .85); }
+.flow-next b { color: var(--volt); }
+.foot { background: var(--night); color: rgba(255, 255, 255, .55); border: 0; }

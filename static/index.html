@@ -8,6 +8,10 @@
 <link rel="stylesheet" href="/core/common.css">
 <link rel="preload" href="/fonts/PretendardVariable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/theme.css">
+<script>/* 화면 스킨: KRDS 정부표준풍(krds) · 브랜드형(brand). 주소 ?skin=brand 또는 머리 줄 스위치로 바꾸고, 이 브라우저에 기억한다 */
+(function () { var s; try { s = new URLSearchParams(location.search).get("skin") || localStorage.getItem("baton:skin"); } catch (e) {}
+  if (s !== "brand") s = "krds"; document.documentElement.setAttribute("data-skin", s);
+  document.write('<link id="skin-css" rel="stylesheet" href="/skin-' + s + '.css">'); })();</script>
 </head>
 <body>
 <div class="gov-strip"><b>2026 공공 AI 대전환 챌린지 출품작</b><span class="sep">|</span><span>시연용 모의자료 사용</span></div>
@@ -16,6 +20,10 @@
   <b>업무바통</b><span class="ms-sub">공공기관 업무지원 AI 서비스</span>
   <span class="ms-space"></span>
   <span class="pv-badge" title="사람 이름은 자료를 읽을 때 역할 이름(전임자·후임자·소속 직위)으로 바뀌어 저장됩니다. 휴대전화·개인 메일도 가립니다."><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>이름 비식별 저장</span>
+  <div class="skin-sw" role="group" aria-label="화면 스타일">
+    <button type="button" data-skin="krds" title="정부 누리집 디자인 시스템(KRDS)풍">정부표준</button>
+    <button type="button" data-skin="brand" title="업무바통 브랜드 스타일">브랜드</button>
+  </div>
   <select id="cur-h" title="인수인계 건 선택"></select>
   <span id="llm-badge" class="llm-badge">모델: …</span>
 </div>
@@ -32,19 +40,22 @@
     <li><b>AI 전임자 분신</b><span>자료로 답하고, 모르면 물어볼 곳을 알려요</span></li>
   </ul>
 </header>
-<nav class="tabs">
-  <button data-tab="start">① 올인원 드롭존</button>
-  <button data-tab="draft">② 인수인계 초안·검토</button>
-  <button data-tab="radar">③ D-Day 리스크 레이더</button>
-  <button data-tab="network">④ 휴먼 네트워크</button>
-  <button data-tab="ask" id="ask-tab">⑤ AI 전임자 분신</button>
-  <button data-tab="form">⑥ 표준 인수인계서</button>
-  <button data-tab="calendar">연간 업무 달력</button>
-  <button data-tab="flags">빈틈 스캐너</button>
-  <button data-tab="docs">자료 목록</button>
-  <button data-tab="photos">포토 아카이브</button>
-  <button data-tab="manual">후임자 업무매뉴얼</button>
-  <button data-tab="history">처리 이력</button>
+<div class="shell">
+<nav class="tabs" aria-label="화면 이동">
+  <div class="nav-group">인수인계 흐름</div>
+  <button data-tab="start"><span class="n">1</span>올인원 드롭존</button>
+  <button data-tab="draft"><span class="n">2</span>인수인계 초안·검토</button>
+  <button data-tab="radar"><span class="n">3</span>D-Day 리스크 레이더</button>
+  <button data-tab="network"><span class="n">4</span>휴먼 네트워크</button>
+  <button data-tab="ask" id="ask-tab"><span class="n">5</span>AI 전임자 분신</button>
+  <button data-tab="form"><span class="n">6</span>표준 인수인계서</button>
+  <div class="nav-group">도구·자료</div>
+  <button data-tab="calendar"><span class="n i" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></span>연간 업무 달력</button>
+  <button data-tab="flags"><span class="n i" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg></span>빈틈 스캐너</button>
+  <button data-tab="docs"><span class="n i" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg></span>자료 목록</button>
+  <button data-tab="photos"><span class="n i" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-8 8"/></svg></span>포토 아카이브</button>
+  <button data-tab="manual"><span class="n i" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4z"/><path d="M9 9h6M9 13h6"/></svg></span>후임자 업무매뉴얼</button>
+  <button data-tab="history"><span class="n i" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></span>처리 이력</button>
 </nav>
 <main>
   <section class="tab" id="tab-start">
@@ -135,6 +146,7 @@
   </section>
   <section class="tab" id="tab-history" hidden></section>
 </main>
+</div>
 <script src="/core/common.js"></script>
 <script src="/app.js"></script>
 <footer class="foot">공공기관 업무지원 AI 서비스 · 화면에 나오는 기관·인물·문서는 모두 시연용 모의자료입니다.</footer>

@@ -1,0 +1,50 @@
+/* 스킨 ① 정부표준풍: 정부 누리집 디자인 시스템(KRDS)의 색·간격·모서리 규칙을 따른다.
+   흰 바탕 + 회색 단계 + 파랑(primary) 하나, 남색(secondary)은 머리 영역에만. 정부 상징·부처 로고는 쓰지 않는다. */
+:root {
+  --bg: #f4f5f6; --panel: #fff; --ink: #1e2124; --ink-2: #33363d; --muted: #58616a; --faint: #8a949e;
+  --line: #e6e8ea; --line-strong: #cdd1d5; --fill: #f0f2f4; --fill-2: #f8f9fa;
+  --brand: #256ef4; --brand-strong: #0b50d0; --brand-soft: #ecf2fe; --brand-ink: #0b50d0; --on-brand: #fff;
+  --navy: #052b57; --navy-2: #063a74;
+  --ok: #228738; --ok-soft: #eaf6ec; --warn: #8a5c00; --warn-soft: #fff3db; --warn-line: #f1d9a6;
+  --bad: #d63d1e; --bad-soft: #fdefec; --bad-line: #f5c6bb; --hl: #fff8d6;
+  --radius: 10px; --radius-sm: 6px; --radius-xs: 4px;
+  --shadow: none; --shadow-lg: 0 12px 40px rgba(5, 43, 87, .18);
+  --focus: 0 0 0 2px #fff, 0 0 0 4px #256ef4;
+}
+body { font-size: 15.5px; line-height: 1.65; }
+
+/* 맨 위 띠: 회색 바탕에 작은 글씨(누리집 식별 띠 자리) */
+.gov-strip { background: var(--fill); color: var(--muted); border-bottom: 1px solid var(--line); }
+.gov-strip b { color: var(--ink-2); font-weight: 600; }
+.masthead { border-bottom: 2px solid var(--navy-2); }
+.masthead .ms-mark { background: var(--navy-2); color: #fff; }
+.masthead b { font-weight: 700; }
+
+/* 머리 영역: 장식 없이 밝은 바탕 + 남색 제목, 핵심 기능은 테두리 카드 */
+header.top { background: linear-gradient(180deg, #eef3fd 0%, var(--bg) 100%); color: var(--ink); border-bottom: 1px solid var(--line); }
+header.top .eyebrow { padding: 5px 10px; border-radius: var(--radius-xs); background: var(--navy-2); color: #fff; }
+header.top h1 { color: var(--navy); font-weight: 800; }
+header.top .sub { color: var(--ink-2); }
+header.top .highlights li { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+header.top .highlights li:first-child { border-left: 1px solid var(--line); }
+header.top .highlights li:hover { border-color: var(--brand); transform: translateY(-2px); }
+header.top .highlights li::before { color: var(--brand); }
+header.top .highlights b { color: var(--ink); }
+header.top .highlights span { color: var(--muted); }
+
+/* 옆 메뉴: 누리집 사이드 메뉴처럼 선택 항목 왼쪽에 파란 막대 */
+nav.tabs .nav-group { color: var(--navy-2); font-size: 13px; border-bottom: 1px solid var(--line); margin: 0 4px 4px; padding-left: 8px; }
+nav.tabs button, nav.tabs button:hover { border-radius: var(--radius-sm); position: relative; }
+nav.tabs.inked button.on, nav.tabs button.on { background: var(--brand-soft); color: var(--brand-ink); }
+nav.tabs button.on::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: var(--brand); }
+@media (max-width: 1100px) { nav.tabs button.on::before { display: none; } }
+
+/* 카드·표: 테두리로 구분, 그림자 없음 */
+.panel { border-color: var(--line); }
+.panel h2 { color: var(--ink); }
+table.t th { background: var(--fill); color: var(--ink-2); border-top: 1px solid var(--ink-2); }
+button.primary { box-shadow: none; }
+.radar-top .bomb { box-shadow: none; }
+.net-center circle { fill: var(--navy-2); }
+.av-head .avatar { background: var(--navy-2); }
+.foot { background: var(--fill); }

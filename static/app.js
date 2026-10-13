@@ -269,7 +269,7 @@ function renderDraft() {
       rv.confirmed ? el("span", { class: "done-badge", title: rv.at || "" }, `전임자 확인 완료 · ${rv.by || ""} · ${(rv.at || "").slice(0, 10).replace(/-/g, ".")}`)
         : el("span", { class: "tag warn" }, "검토 중(초안)")),
     el("p", { class: "small muted" }, `인계: 전임자 → 후임자 (사람 이름 비식별) · 작성 방식: ${d.engine} · 분석 ${d.seconds}초 · 자료 ${d.docs.length}건`),
-    el("div", { class: "grid3", style: { gridTemplateColumns: "repeat(6,1fr)" } },
+    el("div", { class: "stats" },
       ...[["담당업무", cnt("rnr")], ["일정", cnt("schedule")], ["연락처", cnt("contacts")], ["현안", cnt("issues")], ["빈틈", open], ["AI 분신 질문", H.asked || 0]]
         .map(([a, b]) => el("div", { class: "stat" }, el("b", {}, b), a))),
     el("h3", {}, "업무 개요"), el("p", { style: { whiteSpace: "pre-wrap" } }, d.overview),
@@ -936,11 +936,24 @@ async function renderPhotos(q) {
         : el("div", { class: "empty" }, r.total ? "찾는 사진이 없습니다. 다른 낱말로 찾아 보세요." : "넣은 자료에 사진이 없습니다. 드롭존에 사진(JPG·PNG 등)을 함께 놓으면 여기에 모입니다.")));
 }
 
+// 화면 스킨 바꾸기: 정부표준(KRDS풍) ↔ 브랜드형. 고른 값은 이 브라우저에 기억한다
+function setupSkin() {
+  const paint = () => $$(".skin-sw button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.skin === document.documentElement.dataset.skin)));
+  $$(".skin-sw button").forEach(b => b.addEventListener("click", () => {
+    const s = b.dataset.skin;
+    document.documentElement.dataset.skin = s;
+    $("#skin-css").href = `/skin-${s}.css`;
+    try { localStorage.setItem("baton:skin", s); } catch (e) {}
+    paint();
+  }));
+  paint();
+}
+
 let goTab;
 function renderAll() { renderDraft(); renderCalendar(); renderFlags(); renderDocs(); renderRadar(); renderNetwork(); PHOTO_Q = ""; renderPhotos(); }
 document.addEventListener("DOMContentLoaded", async () => {
-  setupStart(); setupAsk(); setupManual();
-  goTab = setupTabs(id => { if (id === "history") renderHistory(); if (id === "form") renderForm(); });
+  setupStart(); setupAsk(); setupManual(); setupSkin();
+  goTab = setupTabs(id => { document.body.dataset.tab = id; if (id === "history") renderHistory(); if (id === "form") renderForm(); });
   $("#cur-h").onchange = e => e.target.value && select(e.target.value);
   await refreshList();
 });
