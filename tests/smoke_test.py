@@ -170,10 +170,25 @@ def check_baton(c):
            and "인수인계 순서도" in md2 and "착임 후 순서도" in man)
     yield "인수인계서·매뉴얼에 리스크 레이더·네트워크·노하우", all(k in md2 for k in ("D-Day 리스크 레이더", "부임 첫 주에 해야 할 일", "협업 네트워크", "노하우 카드")) \
         and "감사 지적 우려 계약" in man
+    # 리포트 업그레이더: 전임자 보고서를 찾아 양식에 맞춘 다음 보고서(업그레이드)
+    rps = c.call("GET", f"/api/handovers/{hid}/reports")["reports"]
+    wq = next((r for r in rps if "수질" in r["file"]), None)
+    rq = c.call("POST", f"/api/handovers/{hid}/reports/build", {"file": wq["file"], "mode": "next", "date": "2026-10-12"}) if wq else {}
+    rf = c.call("POST", f"/api/handovers/{hid}/reports/build", {"file": wq["file"], "mode": "refresh", "date": "2026-10-12"}) if wq else {}
+    plan = next((r for r in rps if r["kind"] == "계획"), None)
+    rpn = c.call("POST", f"/api/handovers/{hid}/reports/build", {"file": plan["file"], "mode": "next"}) if plan else {}
+    hw = c.call("POST", f"/api/handovers/{hid}/reports/export?fmt=hwpx", {"file": wq["file"], "mode": "next", "date": "2026-10-12"}, raw=True) if wq else b""
+    tables = [s_["table"] for s_ in rq.get("sections", []) if s_.get("table")]
+    yield (f"리포트 업그레이더(보고서 {len(rps)}건, 보완 {len(rq.get('upgrades', []))}가지, 입력칸 {rq.get('fills')})",
+           len(rps) == 2 and "2026년 10월" in rq.get("title", "") and tables and "이번(10월)" in tables[0]["header"]
+           and len(rq["summary"]) == 3 and len(rq["upgrades"]) >= 6 and rq["fills"] >= 5 and "2027년" in rpn.get("title", "")
+           and rf.get("title") and hw[:2] == b"PK" and "문서번호" not in rpn.get("org", "")
+           and c.status("POST", f"/api/handovers/{hid}/reports/build", {"file": "없는.pdf"}) == 404)
+    rep_text = json.dumps([rq, rpn], ensure_ascii=False)
     # 이름이 어디에도 남지 않는지: 내려받은 문서·바통·답·네트워크·저장 데이터
     names = ["김도윤", "최선우", "정민재", "박서연", "강민호", "문가은", "오세영", "정하은", "최현우", "이정훈", "박정우"]
     outs = md2 + man + b.decode("utf-8") + json.dumps(c.call("GET", f"/api/handovers/{hid}/network"), ensure_ascii=False) + \
-        json.dumps(c.call("GET", f"/api/handovers/{hid}"), ensure_ascii=False) + a3["answer"]
+        json.dumps(c.call("GET", f"/api/handovers/{hid}"), ensure_ascii=False) + a3["answer"] + rep_text
     leaked = sorted({n for n in names if n in outs})
     yield f"개인정보: 사람 이름 노출 0건{' (노출: ' + ','.join(leaked) + ')' if leaked else ''}", not leaked and "010-0000-9081" not in outs
     # 뒤죽박죽 최소자료: 사진·스캔본·ZIP·중복·빈 파일·옛 형식이 섞여도 정리해서 읽고, 모자란 영역은 면담 질문지로
@@ -183,8 +198,12 @@ def check_baton(c):
     yield (f"뒤죽박죽 자료 정리(읽음 {len(files)}, 건너뜀 {len(mh['skipped'])})",
            all(k in reasons for k in ("같은 내용", "빈 파일", ".xls", "heic", "임시·시스템"))
            and any(f.startswith("옛날자료.zip/") for f in files) and any(f.endswith(".jpg") for f in files))
+    mr = c.call("GET", f"/api/handovers/{mh['id']}/reports")["reports"]
+    st = c.call("POST", f"/api/handovers/{mh['id']}/reports/build", {"file": mr[0]["file"], "date": "2026-10-12"}) if mr else {}
+    tb = next((s_["table"] for s_ in st.get("sections", []) if s_.get("table")), {})
+    yield "리포트 업그레이더: 현황 보고에 예산 집행률 표 계산", st.get("kind") == "현황 보고" and tb.get("rows") and tb["rows"][-1][0] == "합계" and "%" in tb["rows"][-1][3]
     mnames = ["박정우", "이서진", "한서윤", "오민석", "윤가람", "이수민"]
-    mdump = json.dumps(c.call("GET", f"/api/handovers/{mh['id']}"), ensure_ascii=False) + \
+    mdump = json.dumps(c.call("GET", f"/api/handovers/{mh['id']}"), ensure_ascii=False) + json.dumps(st, ensure_ascii=False) + \
         c.call("POST", f"/api/handovers/{mh['id']}/export/handover?fmt=md", {}, raw=True).decode("utf-8")
     mleak = [n for n in mnames if n in mdump]
     yield f"개인정보: 스캔본·사진 글자 속 이름도 노출 0건{' (노출: ' + ','.join(mleak) + ')' if mleak else ''}", not mleak

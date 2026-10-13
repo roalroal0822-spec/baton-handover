@@ -24,6 +24,7 @@ import network
 import photos as photo_mod
 import qa
 import radar
+import reportgen
 import report
 
 VERSION = "1.1.0"
@@ -415,6 +416,50 @@ def delete_photo(req):
     save_h(h)
     log(h["id"], "사진 삭제", pid)
     return {"ok": True, "total": len(h["photos"])}
+
+
+# ---------------------------------------------------------------- 리포트 업그레이더
+
+def _report(h, body):
+    file = str(body.get("file") or "")
+    mode = body.get("mode") if body.get("mode") in ("next", "refresh") else "next"
+    try:
+        base = date.fromisoformat(str(body["date"])) if body.get("date") else date.today()
+    except ValueError:
+        raise HttpError(400, "기준일 형식이 올바르지 않습니다(예: 2026-10-12)")
+    blocks = store.read(f"handovers/{h['id']}/blocks.json", [])
+    if not any(c["file"] == file for c in reportgen.candidates(h, blocks)):
+        raise HttpError(404, "보고서를 찾을 수 없습니다")
+    return reportgen.generate(h, blocks, file, mode, base, radar.build(h, base), network.build(h, blocks), llm)
+
+
+@app.get("/api/handovers/<hid>/reports")
+def list_reports(req):
+    h = load_h(req.params["hid"])
+    return {"reports": reportgen.candidates(h, store.read(f"handovers/{h['id']}/blocks.json", []))}
+
+
+@app.post("/api/handovers/<hid>/reports/build")
+def build_report(req):
+    h = load_h(req.params["hid"])
+    r = _report(h, req.json)
+    log(h["id"], "보고서 업그레이드", r["title"])
+    return r
+
+
+@app.post("/api/handovers/<hid>/reports/export")
+def export_report(req):
+    h = load_h(req.params["hid"])
+    fmt = req.query.get("fmt", "hwpx")
+    if fmt not in FORMATS:
+        raise HttpError(400, f"지원하지 않는 파일 형식입니다: '{fmt}'")
+    r = _report(h, req.json)
+    data, ctype = export(reportgen.to_blocks(r), fmt)
+    name = _fname(r["title"])
+    out = store.path(f"handovers/{h['id']}/outputs/{name}.{fmt}")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(data)
+    return file_response(data, f"{name}.{fmt}", ctype)
 
 
 # ---------------------------------------------------------------- D-Day 리스크 레이더

@@ -56,7 +56,7 @@ function setupStart() {
     const box = $("#picked");
     box.innerHTML = "";
     $("#drop").classList.toggle("has", !!pickedFiles.length);
-    $(".dz-title").textContent = pickedFiles.length ? "더 놓으면 계속 쌓여요" : "여기에 몽땅 끌어다 놓기";
+    $(".dz-title").textContent = pickedFiles.length ? `${pickedFiles.length}개 담음 · 더 놓으면 계속 쌓여요` : "여기에 몽땅 끌어다 놓기";
     if (pickedFiles.length) {
       const cnt = {};
       pickedFiles.forEach(f => { const k = kindOf(fpath(f)); cnt[k] = (cnt[k] || 0) + 1; });
@@ -82,20 +82,25 @@ function setupStart() {
     if (files.length) toast(`${files.length}개 파일을 담았습니다`);
   };
   const drop = $("#drop");
+  const toStart = () => { if (goTab) goTab("start"); };
   drop.onclick = e => { if (e.target.id !== "pick-folder") $("#in-files").click(); };
   drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("#in-files").click(); } };
   $("#pick-folder").onclick = e => { e.preventDefault(); e.stopPropagation(); $("#in-folder").click(); };
-  $("#in-folder").onchange = e => { addFiles([...e.target.files]); e.target.value = ""; };
-  $("#in-files").onchange = e => { addFiles([...e.target.files]); e.target.value = ""; };
+  $("#in-folder").onchange = e => { addFiles([...e.target.files]); e.target.value = ""; toStart(); };
+  $("#in-files").onchange = e => { addFiles([...e.target.files]); e.target.value = ""; toStart(); };
   // 드롭존뿐 아니라 시작 화면 어디에 놓아도 받는다(브라우저가 파일을 열어 버리지 않게)
+  // 화면 어디에 놓아도 올인원 드롭존이 받는다(어느 탭에 있든)
   let depth = 0;
-  const area = $("#tab-start");
-  area.addEventListener("dragenter", e => { if ([...(e.dataTransfer.types || [])].includes("Files")) { depth++; drop.classList.add("over"); } });
-  area.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; drop.classList.remove("over"); } });
-  area.addEventListener("dragover", e => e.preventDefault());
-  area.addEventListener("drop", async e => { e.preventDefault(); depth = 0; drop.classList.remove("over"); addFiles(await filesFromDrop(e)); });
+  const isFiles = e => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes("Files");
+  window.addEventListener("dragenter", e => { if (isFiles(e)) { depth++; drop.classList.add("over"); document.body.classList.add("dragging"); } });
+  window.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; drop.classList.remove("over"); document.body.classList.remove("dragging"); } });
   window.addEventListener("dragover", e => e.preventDefault());
-  window.addEventListener("drop", e => e.preventDefault());
+  window.addEventListener("drop", async e => {
+    e.preventDefault(); depth = 0; drop.classList.remove("over"); document.body.classList.remove("dragging");
+    if (!isFiles(e)) return;
+    addFiles(await filesFromDrop(e)); toStart();
+    window.scrollTo({ top: $("#tab-start").offsetTop - 70, behavior: "smooth" });
+  });
   $("#start-date").value = new Date().toISOString().slice(0, 10);
   $("#create").onclick = async () => {
     const kind = pickedFiles.length ? "upload" : src();
@@ -161,7 +166,7 @@ function renderAvatarHead() {}
 function needH(sec) {
   if (H) return false;
   sec.innerHTML = "";
-  sec.append(el("div", { class: "empty" }, "먼저 ① 올인원 드롭존에서 인수인계 건을 만들거나 선택하세요."));
+  sec.append(el("div", { class: "empty" }, "먼저 올인원 드롭존에서 인수인계 건을 만들거나 선택하세요."));
   return true;
 }
 
@@ -295,7 +300,7 @@ function renderDraft() {
   sec.append(renderRelay());
   if (!rv.confirmed) sec.append(el("p", { class: "small muted" }, "표의 내용을 눌러 바로 고칠 수 있습니다. 맞는 항목은 '확인', 틀린 항목은 '삭제'를 누르세요. 근거 칩을 누르면 원문 위치가 보입니다."));
   ["issues", "schedule", "contacts", "rnr"].forEach(k => sec.append(renderSection(k)));
-  const memo = el("textarea", { placeholder: "후임자에게 남길 말을 적어 주세요 (협업 상대별 일하는 요령은 ④ 휴먼 네트워크의 노하우 카드로 남기면 좋습니다)" });
+  const memo = el("textarea", { placeholder: "후임자에게 남길 말을 적어 주세요 (협업 상대별 일하는 요령은 휴먼 네트워크의 노하우 카드로 남기면 좋습니다)" });
   sec.append(el("div", { class: "panel" }, el("h2", {}, "전임자 메모"),
     el("ul", {}, (rv.comments || []).map(c => el("li", {}, el("span", { class: "small muted" }, c.at + " "), c.text))),
     memo, el("button", { style: { marginTop: "6px" }, onclick: async () => {
@@ -326,7 +331,7 @@ function renderCoverage() {
           (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => toast("질문지를 복사했습니다"), () => modal("인계 면담 질문지", el("pre", { class: "doc" }, text)));
         } }, "질문지 복사")),
       el("ol", { class: "small" }, gaps.map(c => el("li", {}, el("b", {}, `[${c.name}] `), c.question))),
-      el("p", { class: "small muted", style: { margin: 0 } }, "면담에서 들은 답은 ② 표에 바로 고쳐 넣거나, 협업 상대별 요령이면 ④ 노하우 카드로 남기세요. AI 분신은 그 내용을 근거로 답합니다.")) : null);
+      el("p", { class: "small muted", style: { margin: 0 } }, "면담에서 들은 답은 초안 표에 바로 고쳐 넣거나, 협업 상대별 요령이면 노하우 카드로 남기세요. AI 분신은 그 내용을 근거로 답합니다.")) : null);
 }
 
 // 인수인계 순서도: 단계마다 완료·진행 중·예정과 근거 숫자, 누르면 해당 화면으로
@@ -543,8 +548,8 @@ function setupAsk() {
         !r.found ? el("div", { class: "who-box" },
           el("b", {}, who.length ? "이 협업 상대에게 물어보세요" : "인계 자료에 없는 내용입니다"),
           who.length ? el("ul", {}, who.map(w => el("li", {}, el("b", {}, w.label), ` · ${w.group}`, w.phone ? ` · ${w.phone}` : "", w.why ? el("span", { class: "muted" }, ` — ${w.why}`) : null)))
-            : el("p", { class: "small muted", style: { margin: "4px 0 0" } }, "팀장·업무 대행자에게 확인한 뒤, 답을 ② 표나 ④ 노하우 카드에 남겨 두면 다음 질문부터 AI 분신이 답합니다."),
-          el("button", { class: "small", style: { marginTop: "6px" }, onclick: () => goTab("network") }, "④ 휴먼 네트워크에서 보기")) : null));
+            : el("p", { class: "small muted", style: { margin: "4px 0 0" } }, "팀장·업무 대행자에게 확인한 뒤, 답을 초안 표나 노하우 카드에 남겨 두면 다음 질문부터 AI 분신이 답합니다."),
+          el("button", { class: "small", style: { marginTop: "6px" }, onclick: () => goTab("network") }, "휴먼 네트워크에서 보기")) : null));
     } catch (e) { pending.remove(); }
   };
   $("#ask").onclick = () => send();
@@ -1024,12 +1029,110 @@ function setupTrack() {
   return place;
 }
 
+// ------------------------------------------------------------ 드롭존 허브: 드롭 한 번으로 만들어지는 것
+const HUB = [
+  ["draft", "인수인계 초안", "출처가 달린 업무·일정·연락처·현안, 전임자 검토", "M4 5h16M4 10h16M4 15h10"],
+  ["flags", "빈틈 스캐너", "누락·충돌·불확실·기한 지남", "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4"],
+  ["radar", "D-Day 리스크 레이더", "부임 첫 주 할 일·감사 지적 우려 계약", "M12 3a9 9 0 1 0 9 9M12 7a5 5 0 1 0 5 5M12 12l6-6"],
+  ["network", "휴먼 네트워크", "협업 상대 지도와 노하우 카드", "M6 6a2 2 0 1 0 0 .1M18 6a2 2 0 1 0 0 .1M12 18a2 2 0 1 0 0 .1M7 7l4 9M17 7l-4 9M8 6h8"],
+  ["ask", "AI 전임자 분신", "자료로만 답하고 모르면 물어볼 곳 안내", "M4 5h16v10H9l-5 4z"],
+  ["reports", "리포트 업그레이더", "전임자 보고서로 다음 보고서 작성", "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6"],
+  ["form", "표준 인수인계서", "필수 5대 영역 서식·법령 검색", "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"],
+  ["calendar", "업무 달력", "월별 할 일, 내 일정(.ics)으로", "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"],
+  ["manual", "업무매뉴얼", "착임일·경력 맞춤 후임자 매뉴얼", "M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11"],
+  ["photos", "포토 아카이브", "사진만 모아 키워드로 찾기", "M4 7h4l2-3h4l2 3h4v12H4zM12 10a3 3 0 1 0 0 6 3 3 0 0 0 0-6"],
+];
+async function renderHub() {
+  const box = $("#hub");
+  if (!box) return;
+  const metric = {};
+  if (H) {
+    const d = H.draft, live = k => d.sections[k].filter(i => i.status !== "삭제").length;
+    metric.draft = `항목 ${live("rnr") + live("schedule") + live("contacts") + live("issues")}`;
+    metric.flags = `남은 빈틈 ${d.flags.filter(f => !f.resolved).length}`;
+    metric.ask = `질문 ${H.asked || 0}`;
+    metric.calendar = `일정 ${live("schedule")}`;
+    metric.photos = `사진 ${(H.photos || []).length}`;
+    metric.form = H.form ? "저장됨" : "자동 작성됨";
+    metric.manual = "착임일 맞춤";
+    $("#hub-sub").textContent = `지금: ${H.title}`;
+  } else $("#hub-sub").textContent = "자료를 놓으면 아래가 모두 자동으로 채워집니다";
+  const paint = () => {
+    box.innerHTML = "";
+    HUB.forEach(([tab, name, desc, path]) => box.append(el("button", { class: "hub-card" + (H ? "" : " idle"), onclick: () => H ? goTab(tab) : toast("먼저 올인원 드롭존에 자료를 놓아 주세요", true) },
+      el("span", { class: "hub-ico", html: `<svg viewBox="0 0 24 24"><path d="${path}"/></svg>` }),
+      el("b", {}, name), el("span", { class: "hub-desc" }, desc),
+      metric[tab] ? el("span", { class: "hub-metric" + (/^(위험|남은 빈틈) [1-9]/.test(metric[tab]) ? " hot" : "") }, metric[tab]) : null)));
+  };
+  paint();
+  if (!H) return;
+  const hid = H.id;
+  const [rd, net, rp] = await Promise.all([api("GET", `/api/handovers/${hid}/radar`).catch(() => null),
+    api("GET", `/api/handovers/${hid}/network`).catch(() => null), api("GET", `/api/handovers/${hid}/reports`).catch(() => null)]);
+  if (!H || H.id !== hid) return;
+  if (rd) metric.radar = `위험 ${rd.counts.red} · 주의 ${rd.counts.amber}`;
+  if (net) metric.network = `상대 ${net.counts.nodes} · 노하우 ${net.counts.cards}`;
+  if (rp) metric.reports = rp.reports.length ? `보고서 ${rp.reports.length}건 발견` : "보고서 없음";
+  paint();
+}
+
+// ------------------------------------------------------------ 리포트 업그레이더
+let REPORT = null, REPORT_SEL = null;
+async function renderReports() {
+  const sec = $("#tab-reports");
+  if (needH(sec)) return;
+  const { reports } = await api("GET", `/api/handovers/${H.id}/reports`);
+  if (!reports.some(r => r.file === REPORT_SEL)) { REPORT_SEL = reports[0] ? reports[0].file : null; REPORT = null; }
+  const dt = el("input", { type: "date", value: (H.radar && H.radar.start) || new Date().toISOString().slice(0, 10) });
+  const mode = el("select", {}, el("option", { value: "next" }, "다음 회차(다음 달·다음 연도)로 쓰기"), el("option", { value: "refresh" }, "같은 회차를 보완해 다시 쓰기"));
+  const body = () => ({ file: REPORT_SEL, mode: mode.value, date: dt.value });
+  const make = async () => { REPORT = await api("POST", `/api/handovers/${H.id}/reports/build`, body()); draw(); };
+  const out = el("div");
+  const draw = () => {
+    out.innerHTML = "";
+    if (!REPORT) return;
+    const r = REPORT;
+    out.append(el("div", { class: "rp-wrap" },
+      el("div", { class: "panel rp-doc" },
+        el("div", { class: "row" }, el("span", { class: "tag info" }, r.kind), el("span", { class: "small muted", style: { flex: 1 } }, `${r.org} · ${r.date}`),
+          exportButtons(`/api/handovers/${H.id}/reports/export`, body)),
+        el("h2", { class: "rp-title" }, r.title),
+        el("div", { class: "rp-sum" }, el("b", {}, "보고 요지"), el("ul", {}, r.summary.map(x => el("li", {}, x)))),
+        r.sections.map((s, i) => el("div", { class: "rp-sec" }, el("h3", {}, `${i + 1}. ${s.title}`),
+          s.table ? el("table", { class: "t" }, el("tr", {}, s.table.header.map(x => el("th", {}, x))),
+            s.table.rows.map(row => el("tr", {}, row.map(c => el("td", { class: /【입력/.test(c) ? "fill" : "" }, c))))) : null,
+          el("ul", {}, (s.bullets || []).map(x => el("li", { class: /【입력/.test(x.text) ? "fill-li" : "" }, x.text, x.src ? el("span", { class: "rp-src" }, x.src) : null))))),
+        r.attachments.length ? el("div", { class: "small muted" }, "붙임: ", r.attachments.map(a => a.split("/").pop()).join(" · ")) : null,
+        el("p", { class: "small", style: { marginTop: "10px" } }, `【입력】 ${r.fills}곳은 실제 값을 확인해 채워 주세요(내려받은 한글 파일에서 바로 고칠 수 있습니다).`)),
+      el("div", { class: "panel rp-side" },
+        el("h3", { style: { marginTop: 0 } }, "전임자 보고서 대비 업그레이드"),
+        el("ol", { class: "rp-up" }, r.upgrades.map(u => el("li", {}, u))),
+        el("h4", {}, "전임자 원본"),
+        el("div", { class: "small" }, el("b", {}, r.original.title)),
+        el("div", { class: "small muted" }, `${r.original.file.split("/").pop()} · ${r.original.lines}줄 · 장: ${r.original.sections.join(" / ") || "구분 없음"}`))));
+  };
+  sec.innerHTML = "";
+  sec.append(el("div", { class: "panel" },
+    el("div", { class: "row" }, el("div", { style: { flex: 1 } }, el("h2", { style: { margin: 0 } }, "리포트 업그레이더"),
+      el("span", { class: "small muted" }, "드롭한 자료에서 전임자 보고서를 찾아, 공공기관 보고서 양식으로 더 나은 다음 보고서를 씁니다. 모든 문장에 근거가 붙고, 자료에 없는 값은 【입력】으로 비워 둡니다.")),
+      el("span", { class: "tag info" }, `찾은 보고서 ${reports.length}건`)),
+    reports.length ? el("div", { class: "rp-list" }, reports.map(r => el("button", { class: "rp-pick" + (r.file === REPORT_SEL ? " on" : ""), onclick: () => { REPORT_SEL = r.file; REPORT = null; renderReports(); } },
+      el("span", { class: "tag " + (r.kind === "결과 보고" ? "ok" : r.kind === "계획" ? "info" : "gray") }, r.kind), el("b", {}, r.title), el("span", { class: "small muted" }, `${r.name} · ${r.lines}줄`))))
+      : el("div", { class: "empty" }, "드롭한 자료에서 보고서(결과 보고·계획·현황 보고 등)를 찾지 못했습니다. 한글·PDF·워드 보고서를 함께 놓아 주세요."),
+    reports.length ? el("div", { class: "row", style: { marginTop: "12px" } }, mode, el("label", { class: "small" }, "작성 기준일 ", dt),
+      el("button", { class: "primary", onclick: make }, "업그레이드 보고서 만들기")) : null), out);
+  if (REPORT && REPORT.original.file === REPORT_SEL) draw(); else if (REPORT_SEL) make();
+}
+
 let goTab;
-function renderAll() { renderDraft(); renderCalendar(); renderFlags(); renderDocs(); renderRadar(); renderNetwork(); PHOTO_Q = ""; renderPhotos(); }
+function renderAll() { renderDraft(); renderCalendar(); renderFlags(); renderDocs(); renderRadar(); renderNetwork(); PHOTO_Q = ""; renderPhotos(); renderHub(); REPORT = null; }
 document.addEventListener("DOMContentLoaded", async () => {
   setupStart(); setupAsk(); setupManual(); setupSkin();
   const placeBaton = setupTrack();
-  goTab = setupTabs(id => { document.body.dataset.tab = id; requestAnimationFrame(placeBaton); if (id === "history") renderHistory(); if (id === "form") renderForm(); });
+  goTab = setupTabs(id => {
+    document.body.dataset.tab = id; requestAnimationFrame(placeBaton);
+    if (id === "history") renderHistory(); if (id === "form") renderForm(); if (id === "reports") renderReports(); if (id === "start") renderHub();
+  });
   $("#cur-h").onchange = e => e.target.value && select(e.target.value);
   await refreshList();
 });
