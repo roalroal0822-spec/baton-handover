@@ -91,7 +91,7 @@ nav.tabs button.on .n { background: var(--brand); color: var(--on-brand); }
 nav.tabs button.on .n.i { background: transparent; color: var(--brand-ink); }
 
 /* 트랙 연출 요소: 기본은 숨김, 브랜드 스킨만 켠다 */
-.track-progress, .track-bg, .hero-track, .nav-baton { display: none; }
+.track-gauge, .track-bg, .hero-track, .nav-baton, .flow-arc { display: none; }
 nav.tabs { position: sticky; }
 
 /* ── 카드 ── */

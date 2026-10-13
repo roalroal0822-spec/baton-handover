@@ -344,8 +344,40 @@ async function renderFlow(box) {
   box.append(
     el("div", { class: "row" }, el("h2", { style: { flex: 1, margin: 0 } }, "인수인계 순서도"),
       el("span", { class: "tag " + (f.current ? "info" : "ok") }, `${f.done}/${f.total} 단계 완료`)),
-    el("div", { class: "flow" }, steps),
+    el("div", { class: "flow" }, steps), flowArc(f, cls),
     el("div", { class: "flow-next" }, el("b", {}, f.current ? "지금 할 일 " : "완료 "), f.next));
+}
+
+// 순서도를 반원 트랙으로(브랜드 스킨의 넓은 화면에서만 보이고, 나머지는 위의 가로 순서도): 단계는 트랙 위 구간, 지금 단계에 바통
+function flowArc(f, cls) {
+  const W = 1000, Hh = 340, cx = 500, cy = 300, r = 240, n = f.steps.length;
+  const pt = (rr, deg) => [cx + rr * Math.cos(deg * Math.PI / 180), cy + rr * Math.sin(deg * Math.PI / 180)];
+  const arc = rr => `M${cx - rr} ${cy}A${rr} ${rr} 0 0 1 ${cx + rr} ${cy}`;
+  const cur = f.steps.findIndex(x => x.status === "진행 중");
+  const reach = (cur >= 0 ? cur : f.done ? n - 1 : 0) / Math.max(n - 1, 1);
+  const g = svg("svg", { viewBox: `0 0 ${W} ${Hh}`, class: "flow-arc", role: "group", "aria-label": `인수인계 순서도, ${f.done}/${f.total} 단계 완료` },
+    svg("defs", {}, svg("linearGradient", { id: "fa-g", x1: "0", y1: "0", x2: "1", y2: "0" },
+      svg("stop", { offset: "0", class: "fa-s0" }), svg("stop", { offset: "1", class: "fa-s1" }))),
+    svg("path", { class: "fa-band", d: arc(r + 22) + `L${cx + r - 22} ${cy}A${r - 22} ${r - 22} 0 0 0 ${cx - r + 22} ${cy}Z` }),
+    svg("path", { class: "fa-edge", d: arc(r + 22) }), svg("path", { class: "fa-edge", d: arc(r - 22) }), svg("path", { class: "fa-mid", d: arc(r) }),
+    svg("path", { class: "fa-prog", d: arc(r), pathLength: 1, "stroke-dasharray": `${reach} 1` }));
+  f.steps.forEach((x, i) => {
+    const deg = 180 + (180 * i) / Math.max(n - 1, 1), [px, py] = pt(r, deg), [lx, ly] = pt(r + 56, deg);
+    const anchor = Math.abs(lx - cx) < 60 ? "middle" : lx < cx ? "end" : "start";
+    const st = cls[x.status], go = () => goTab(x.tab);
+    g.append(svg("g", { class: "fa-step " + st, tabindex: 0, role: "button", "aria-label": `${i + 1}단계 ${x.name} · ${x.status}`, onclick: go,
+        onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } } },
+      svg("title", {}, x.next || x.detail),
+      svg("circle", { cx: px, cy: py, r: st === "now" ? 17 : 14 }),
+      svg("text", { x: px, y: py + 5, "text-anchor": "middle", class: "fa-no" }, st === "done" ? "✓" : String(x.no)),
+      svg("text", { x: lx, y: ly, "text-anchor": anchor, class: "fa-name" }, x.name),
+      svg("text", { x: lx, y: ly + 18, "text-anchor": anchor, class: "fa-sub" }, `${x.who} · ${x.detail}`)));
+  });
+  const [bx, by] = pt(r, 180 + 180 * reach);
+  g.append(svg("rect", { class: "fa-baton", x: bx - 17, y: by - 5.5, width: 34, height: 11, rx: 5.5, transform: `rotate(${90 + 180 * reach} ${bx} ${by}) translate(0 -27)` }),
+    svg("text", { x: cx, y: cy - 62, "text-anchor": "middle", class: "fa-big" }, `${f.done} / ${f.total}`),
+    svg("text", { x: cx, y: cy - 32, "text-anchor": "middle", class: "fa-sub" }, f.current ? `구간 완주 · 지금 ${f.steps[cur] ? f.steps[cur].name : ""}` : "모든 구간 완주"));
+  return g;
 }
 
 // 지식 릴레이: 업무 계보와 바통 파일(.baton) 저장
@@ -953,6 +985,7 @@ function setupSkin() {
 // 트랙 연출(브랜드 스킨에서만 보임): 스크롤 진행도를 CSS 변수로 넘기고, 옆 메뉴의 바통이 고른 화면으로 넘어간다
 function setupTrack() {
   const root = document.documentElement, nav = $("nav.tabs");
+  const gauge = $(".track-gauge"), gProg = gauge && $(".tg-prog", gauge), gBaton = gauge && $(".tg-baton", gauge), gPct = gauge && $(".tg-pct", gauge);
   const baton = el("span", { class: "nav-baton", "aria-hidden": "true" });
   nav.prepend(baton);
   let ticking = false;
@@ -962,8 +995,17 @@ function setupTrack() {
     requestAnimationFrame(() => {
       ticking = false;
       const max = root.scrollHeight - innerHeight;
-      root.style.setProperty("--sp", max > 0 ? Math.min(scrollY / max, 1).toFixed(4) : "0");
+      const sp = max > 0 ? Math.min(scrollY / max, 1) : 0;
+      root.style.setProperty("--sp", sp.toFixed(4));
       root.style.setProperty("--sy", scrollY + "px");
+      if (gauge) {
+        // 반원(왼쪽 출발선 180° → 오른쪽 결승선 360°) 위를 바통이 달린다
+        const a = Math.PI * (1 + sp);
+        gProg.style.strokeDashoffset = String(1 - sp);
+        gBaton.setAttribute("transform", `translate(${80 + 62 * Math.cos(a)} ${80 + 62 * Math.sin(a)})`);
+        gPct.textContent = Math.round(sp * 100) + "%";
+        gauge.classList.toggle("idle", max < 200);
+      }
     });
   };
   const place = () => {
@@ -973,6 +1015,7 @@ function setupTrack() {
     baton.style.transform = row ? `translateX(${b.offsetLeft}px)` : `translateY(${b.offsetTop}px)`;
     baton.style.width = row ? b.offsetWidth + "px" : "";
     baton.style.height = row ? "" : b.offsetHeight + "px";
+    if (gauge) $(".tg-lbl", gauge).textContent = b.textContent.replace(/^\d/, "");
     onScroll();
   };
   addEventListener("scroll", onScroll, { passive: true });
