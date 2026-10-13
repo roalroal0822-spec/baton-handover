@@ -235,6 +235,26 @@ def check_baton(c):
            sv["saved"] and len(fm["a1"]["laws"]) >= 2 and len(fm["a3"]["budget"]) >= 3 and all(f"{n}." in sec for n in range(1, 6)) and "(인)" in sec)
     yield "법령 검색: 인증값(OC) 없으면 신청 안내", c.status("GET", "/api/law/search?q=x") == 400 and \
         c.status("POST", "/api/law/config", {"oc": "a@b.kr"}) == 400
+    # 업무 간트차트(기간별·업무별) → 막대 하나로 체크리스트 만들기·체크 저장·다시 만들기·내보내기
+    gt = c.call("GET", f"/api/handovers/{hid}/gantt?start=2026-10-12")
+    kinds = {r_["kind"] for r_ in gt["rows"]}
+    grouped = sum(len(g_["rows"]) for g_ in gt["groups"])
+    ac = next((r_ for r_ in gt["rows"] if r_["kind"] == "계약" and "냉난방" in r_["title"]), None)
+    cl = c.call("POST", f"/api/handovers/{hid}/checklist", {"key": ac["key"]})["checklist"] if ac else {"items": []}
+    its = cl["items"]
+    its[0]["done"] = True
+    its.append({"id": "ck-user1", "group": "실행", "text": "업체에 착공계 제출 요청", "done": False})
+    c.call("POST", f"/api/handovers/{hid}/checklist/save", {"key": ac["key"], "items": its})
+    rg = c.call("POST", f"/api/handovers/{hid}/checklist", {"key": ac["key"], "regenerate": True})["checklist"]
+    cmd = c.call("POST", f"/api/handovers/{hid}/checklist/export?fmt=md", {"key": ac["key"]}, raw=True).decode("utf-8")
+    gt2 = c.call("GET", f"/api/handovers/{hid}/gantt?start=2026-10-12")
+    yield (f"간트차트(막대 {len(gt['rows'])}, 담당업무 묶음 {len(gt['groups'])})",
+           kinds == {"일정", "현안", "계약"} and len(gt["months"]) == 12 and gt["window"]["start"] == "2026-10-01" and grouped == len(gt["rows"]))
+    yield (f"업무별 체크리스트(항목 {len(its) - 1})",
+           ac and any("그린공조" in i_["text"] for i_ in its) and any("착공" in i_["text"] for i_ in its) and any(i_["group"] == "먼저 확인" for i_ in its)
+           and rg["items"][0]["done"] and any(i_["text"] == "업체에 착공계 제출 요청" for i_ in rg["items"])
+           and "☑" in cmd and "☐" in cmd and next(r_ for r_ in gt2["rows"] if r_["key"] == ac["key"])["check"]["done"] == 1
+           and c.status("POST", f"/api/handovers/{hid}/checklist", {"key": "zz-없음"}) == 404)
     # 내 일정으로 내보내기(.ics)
     ics = c.call("POST", f"/api/handovers/{hid}/calendar", {"start": "2026-10-12"}, raw=True).decode("utf-8")
     yield f"일정 내보내기(.ics, 일정 {ics.count('BEGIN:VEVENT')}건)", ics.startswith("BEGIN:VCALENDAR") and \

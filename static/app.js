@@ -412,19 +412,31 @@ function renderRelay() {
 }
 const rv_confirmed = () => !!(H.review && H.review.confirmed);
 
-// ------------------------------------------------------------ 달력
+// ------------------------------------------------------------ 달력: 간트 차트(기간별·업무별) / 월별 달력
 const monthHead = m => el("h4", {}, `${m}월`);
+let CAL_VIEW = "gantt", GANTT_MODE = "duty";
+const seg = (cur, opts, on, label) => el("div", { class: "seg", role: "group", "aria-label": label },
+  opts.map(([v, l]) => el("button", { class: v === cur ? "on" : "", "aria-pressed": String(v === cur), onclick: () => on(v) }, l)));
 function renderCalendar() {
   const sec = $("#tab-calendar");
   if (needH(sec)) return;
   sec.innerHTML = "";
+  sec.append(el("div", { class: "panel" },
+    el("div", { class: "row" }, el("h2", { style: { flex: 1, margin: 0 } }, "업무 달력"),
+      seg(CAL_VIEW, [["gantt", "간트 차트"], ["month", "월별 달력"]], v => { CAL_VIEW = v; renderCalendar(); }, "보기 방식")),
+    el("p", { class: "small muted" }, CAL_VIEW === "gantt"
+      ? "분석한 연간 일정·진행 중인 현안·용역 계약 기간을 착임월부터 12개월 막대로 세웠습니다. 막대나 업무 이름을 누르면 그 업무의 체크리스트를 만들 수 있습니다."
+      : "자료에서 찾은 시기별 할 일입니다. 항목을 누르면 근거를 볼 수 있습니다."),
+    icsBox()));
+  if (CAL_VIEW === "gantt") { const box = el("div", { class: "panel gt-panel" }, el("span", { class: "spinner" })); sec.append(box); renderGantt(box); }
+  else renderMonthCal(sec);
+}
+function renderMonthCal(sec) {
   const items = H.draft.sections.schedule.filter(s => s.status !== "삭제");
   const monthly = items.filter(s => s.recurring === "매월");
   const nowM = new Date().getMonth() + 1;
-  sec.append(el("div", { class: "panel" }, el("h2", {}, "연간 업무 달력"),
-    el("p", { class: "small muted" }, "자료에서 찾은 시기별 할 일입니다. 항목을 누르면 근거를 볼 수 있습니다."),
-    monthly.length ? el("div", {}, el("b", {}, "매월 반복: "), monthly.map(s => el("span", { class: "chip", onclick: () => showSource(s.sources[0], CTX()) }, (s.day ? s.day + "일 " : "") + s.task))) : null,
-    icsBox()));
+  if (monthly.length) sec.append(el("div", { class: "panel" }, el("b", {}, "매월 반복: "),
+    monthly.map(s => el("span", { class: "chip", onclick: () => showSource(s.sources[0], CTX()) }, (s.day ? s.day + "일 " : "") + s.task))));
   const by = baseYear();
   const later = items.filter(s => s.recurring !== "매월" && !s.recurring && s.year && s.year > by);
   const cal = el("div", { class: "cal" });
@@ -438,6 +450,96 @@ function renderCalendar() {
   sec.append(cal);
   if (later.length) sec.append(el("div", { class: "panel" }, el("h3", {}, `${by + 1}년 이후 일정`),
     later.map(s => el("div", {}, el("b", {}, `${s.year}년 ${s.months[0]}월${s.day ? " " + s.day + "일" : ""} `), itemEl(s)))));
+}
+
+// 간트 차트: 막대 위치는 창(착임월 1일 ~ 12개월 뒤)에서 날짜가 차지하는 비율
+const KIND_CLS = { "일정": "k-sc", "현안": "k-is", "계약": "k-ct" };
+async function renderGantt(box) {
+  const g = await api("GET", `/api/handovers/${H.id}/gantt`);
+  const t0 = Date.parse(g.window.start), t1 = Date.parse(g.window.end) + 864e5;
+  const pos = d => Math.max(0, Math.min(100, ((Date.parse(d) - t0) / (t1 - t0)) * 100));
+  const fmt = d => d.slice(5).replace("-", ".");
+  const byKey = Object.fromEntries(g.rows.map(r => [r.key, r]));
+  const prog = r => r.check ? el("span", { class: "gt-prog" + (r.check.done === r.check.total ? " full" : ""), "data-prog": r.key }, `✓ ${r.check.done}/${r.check.total}`)
+    : el("span", { class: "gt-prog none", "data-prog": r.key }, "체크리스트");
+  const rowEl = r => el("div", { class: `gt-row ${KIND_CLS[r.kind]}${r.done ? " done" : ""}${r.late ? " late" : ""}` },
+    el("button", { class: "gt-lab", title: `${r.title}\n${r.when}`, onclick: () => openChecklist(r) },
+      el("span", { class: "gt-kind" }, r.kind), el("span", { class: "gt-title" }, r.title), prog(r)),
+    el("div", { class: "gt-track" }, r.segs.map(sg => sg.ms
+      ? el("button", { class: "gt-ms", style: { left: `${pos(sg.start)}%` }, title: `${r.title} · ${sg.start}${r.late ? " (기한 지남)" : ""}`, "aria-label": `${r.title} ${sg.start}`, onclick: () => openChecklist(r) })
+      : el("button", { class: "gt-bar" + (sg.clipped ? " clip" : ""), style: { left: `${pos(sg.start)}%`, width: `${Math.max(.7, pos(sg.end) + 100 / 365 - pos(sg.start))}%` },
+          title: `${r.title} · ${sg.start} ~ ${sg.end}`, "aria-label": `${r.title} ${sg.start}부터 ${sg.end}까지`, onclick: () => openChecklist(r) },
+          r.segs.length === 1 && pos(sg.end) - pos(sg.start) > 9 ? el("span", {}, `${fmt(sg.start)}~${fmt(sg.end)}`) : null))));
+  const marks = [[g.start, "착임", "m-start"], g.today >= g.window.start && g.today <= g.window.end ? [g.today, "오늘", "m-today"] : null].filter(Boolean);
+  const body = el("div", { class: "gt-body" },
+    el("div", { class: "gt-marks", "aria-hidden": "true" }, marks.map(([d, l, c]) => el("span", { class: "gt-mark " + c, style: { left: `${pos(d)}%` } }, el("i", {}, l)))),
+    GANTT_MODE === "duty"
+      ? g.groups.map(gr => [el("div", { class: "gt-group" }, el("b", {}, gr.duty), el("span", { class: "small muted" }, `${gr.rows.length}건`)), gr.rows.map(k => rowEl(byKey[k]))])
+      : g.rows.map(rowEl));
+  const cnt = k => g.rows.filter(r => r.kind === k).length;
+  box.innerHTML = "";
+  box.append(
+    el("div", { class: "row" }, el("h2", { style: { flex: 1, margin: 0 } }, "업무 간트 차트"),
+      seg(GANTT_MODE, [["duty", "업무별"], ["period", "기간별"]], v => { GANTT_MODE = v; renderGantt(box); }, "묶는 방식")),
+    el("div", { class: "legend small" }, el("span", { class: "lg k-sc" }, `일정 ${cnt("일정")}`), el("span", { class: "lg k-is" }, `현안 ${cnt("현안")}`),
+      el("span", { class: "lg k-ct" }, `계약 ${cnt("계약")}`), el("span", { class: "lg k-late" }, "기한 지남"),
+      el("span", {}, `◆ 날짜가 정해진 일 · 기준: 착임일 ${g.start.replace(/-/g, ".")}`)),
+    el("div", { class: "gt-scroll" }, el("div", { class: "gt" },
+      el("div", { class: "gt-head" }, el("div", { class: "gt-lab-h" }, GANTT_MODE === "duty" ? "담당업무 · 할 일" : "할 일(날짜순)"),
+        el("div", { class: "gt-months" }, g.months.map((m, i) => el("span", { class: i === 0 || m.m === 1 ? "y" : "" }, i === 0 || m.m === 1 ? `${String(m.y).slice(2)}년 ${m.m}월` : `${m.m}월`)))),
+      body)));
+}
+
+// 업무별 체크리스트: 막대를 누르면 열리고, 체크·추가·삭제는 바로 저장
+const CL_GROUPS = ["먼저 확인", "협업", "실행", "기한", "마무리"];
+async function openChecklist(row) {
+  const key = row.key;
+  const box = el("div", { class: "cl" });
+  const bg = modal(row.title, box);
+  bg.querySelector(".modal").classList.add("cl-modal");
+  const head = el("div", { class: "cl-meta" }, el("span", { class: "tag " + ({ "일정": "info", "현안": "warn", "계약": "ok" }[row.kind]) }, row.kind),
+    el("span", { class: "small" }, row.when), row.duty ? el("span", { class: "small muted" }, `담당업무: ${row.duty}`) : null,
+    row.status ? el("span", { class: "tag gray" }, row.status) : null);
+  const srcs = row.sources && row.sources.length ? el("div", { class: "small", style: { margin: "4px 0 0" } }, "근거: ", citeChips(row.sources, CTX())) : null;
+  let cl = (await api("GET", `/api/handovers/${H.id}/checklist?key=${encodeURIComponent(key)}`)).checklist;
+  const paintRow = () => {
+    const b = $(`[data-prog="${CSS.escape(key)}"]`);
+    if (b && cl) { const d = cl.items.filter(i => i.done).length; b.textContent = `✓ ${d}/${cl.items.length}`; b.className = "gt-prog" + (d === cl.items.length ? " full" : ""); }
+  };
+  const save = async items => { cl = (await api("POST", `/api/handovers/${H.id}/checklist/save`, { key, items })).checklist; paintRow(); draw(); };
+  const make = async regenerate => { cl = (await api("POST", `/api/handovers/${H.id}/checklist`, { key, regenerate })).checklist; paintRow(); draw(); };
+  const draw = () => {
+    box.innerHTML = "";
+    box.append(head, srcs || "");
+    if (!cl) {
+      box.append(el("div", { class: "cl-empty" },
+        el("p", {}, "이 업무의 체크리스트가 아직 없습니다. 자료의 근거·빈틈·협업 상대·노하우·법정 기한과 업무 종류(계약·점검·예산·보고 등)에 맞는 처리 순서로 만듭니다."),
+        el("button", { class: "primary", onclick: e => { busy(e.currentTarget, true, "만드는 중"); make(false); } }, "체크리스트 만들기")));
+      return;
+    }
+    const done = cl.items.filter(i => i.done).length, pct = cl.items.length ? Math.round(done / cl.items.length * 100) : 0;
+    box.append(el("div", { class: "cl-prog" }, el("div", { class: "cl-bar" }, el("i", { style: { width: pct + "%" } })), el("b", {}, `${done}/${cl.items.length} 완료`)));
+    CL_GROUPS.forEach(gname => {
+      const xs = cl.items.filter(i => i.group === gname);
+      if (!xs.length) return;
+      box.append(el("h4", { class: "cl-g" }, gname), el("ul", { class: "cl-list" }, xs.map(it => {
+        const cb = el("input", { type: "checkbox", id: "cl-" + it.id });
+        cb.checked = !!it.done;
+        cb.addEventListener("change", () => save(cl.items.map(x => x.id === it.id ? { ...x, done: cb.checked } : x)));
+        return el("li", { class: it.done ? "on" : "" }, cb, el("label", { for: "cl-" + it.id }, it.text, it.src ? el("span", { class: "cl-src" }, it.src) : null),
+          el("button", { class: "small ghost", title: "이 항목 빼기", "aria-label": "이 항목 빼기", onclick: () => save(cl.items.filter(x => x.id !== it.id)) }, "✕"));
+      })));
+    });
+    const gsel = el("select", {}, CL_GROUPS.map(gn => el("option", { value: gn, selected: gn === "실행" || null }, gn)));
+    const txt = el("input", { class: "wide", placeholder: "항목 직접 추가 (예: 업체에 착공계 제출 요청)", style: { flex: 1 } });
+    const add = () => { if (!txt.value.trim()) return; save([...cl.items, { id: "ck-u" + Date.now().toString(36), group: gsel.value, text: txt.value.trim(), done: false, auto: false }]); };
+    txt.addEventListener("keydown", e => { if (e.key === "Enter") add(); });
+    box.append(el("div", { class: "row cl-add" }, gsel, txt, el("button", { onclick: add }, "추가")),
+      el("div", { class: "row cl-foot" }, el("span", { class: "small muted" }, "내려받기:"), exportButtons(`/api/handovers/${H.id}/checklist/export`, () => ({ key })),
+        el("span", { style: { flex: 1 } }),
+        el("button", { class: "small", title: "체크한 항목과 직접 넣은 항목은 그대로 둡니다", onclick: () => make(true) }, "자료로 다시 만들기")));
+  };
+  draw();
 }
 
 // 내 일정으로 내보내기(.ics): Outlook·그룹웨어 일정에 매월·매년 반복으로
@@ -1038,7 +1140,7 @@ const HUB = [
   ["ask", "AI 전임자 분신", "자료로만 답하고 모르면 물어볼 곳 안내", "M4 5h16v10H9l-5 4z"],
   ["reports", "리포트 업그레이더", "전임자 보고서로 다음 보고서 작성", "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6"],
   ["form", "표준 인수인계서", "필수 5대 영역 서식·법령 검색", "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"],
-  ["calendar", "업무 달력", "월별 할 일, 내 일정(.ics)으로", "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"],
+  ["calendar", "업무 달력", "간트 차트·업무별 체크리스트, 내 일정(.ics)", "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"],
   ["manual", "업무매뉴얼", "착임일·경력 맞춤 후임자 매뉴얼", "M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11"],
   ["photos", "포토 아카이브", "사진만 모아 키워드로 찾기", "M4 7h4l2-3h4l2 3h4v12H4zM12 10a3 3 0 1 0 0 6 3 3 0 0 0 0-6"],
 ];

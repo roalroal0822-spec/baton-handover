@@ -190,3 +190,13 @@ section.tab > .panel.rv.in::before, #m-out > .panel.rv.in::before { animation: h
 .flow-arc .fa-sub { font-size: 12px; fill: var(--muted); }
 .flow-arc .fa-big { font-size: 46px; font-weight: 900; fill: var(--ink); letter-spacing: -.04em; }
 .flow-arc .fa-baton { fill: var(--volt); filter: drop-shadow(0 0 8px rgba(212, 255, 61, .9)); }
+
+/* 9) 간트 차트: 업무 줄을 트랙 레인처럼(번갈아 옅은 줄), 막대는 바통 모양 알약 */
+.gt-row:nth-of-type(even) .gt-track { background-color: var(--fill-2); }
+.gt-bar, .gt-bar:hover { border-radius: 99px; }
+.gt-bar.clip { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.gt-row.k-sc .gt-bar { background: linear-gradient(90deg, var(--brand), #8b6dff); }
+.gt-mark { border-left-color: var(--night); }
+.gt-mark i { background: var(--night); color: var(--volt); }
+.cl-bar i { background: linear-gradient(90deg, var(--brand), var(--volt)); }
+.seg button.on { background: var(--night); color: #fff; box-shadow: none; }

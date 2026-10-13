@@ -20,6 +20,7 @@ from core import webcommon
 
 import anon
 import engine
+import gantt
 import network
 import photos as photo_mod
 import qa
@@ -494,6 +495,86 @@ def save_radar(req):
     save_h(h)
     log(h["id"], "리스크 레이더 기준 저장", f"착임일 {start.isoformat()}")
     return radar.build(h)
+
+
+# ---------------------------------------------------------------- 업무 간트차트 · 업무별 체크리스트
+
+def _start_of(req):
+    if not req.query.get("start"):
+        return None
+    try:
+        return date.fromisoformat(req.query["start"])
+    except ValueError:
+        raise HttpError(400, "착임일 형식이 올바르지 않습니다(예: 2026-10-12)")
+
+
+@app.get("/api/handovers/<hid>/gantt")
+def get_gantt(req):
+    return gantt.build(load_h(req.params["hid"]), _start_of(req))
+
+
+def _row(h, key):
+    row = gantt.find(h, str(key or ""))
+    if not row:
+        raise HttpError(404, "간트차트에서 그 업무를 찾을 수 없습니다")
+    return row
+
+
+@app.get("/api/handovers/<hid>/checklist")
+def get_checklist(req):
+    h = load_h(req.params["hid"])
+    return {"checklist": (h.get("checklists") or {}).get(req.query.get("key", ""))}
+
+
+@app.post("/api/handovers/<hid>/checklist")
+def make_checklist(req):
+    """막대 하나의 체크리스트를 만든다. 이미 있으면 그대로 돌려주고, regenerate면 자료로 다시 만든다(체크한 항목은 유지)."""
+    h = load_h(req.params["hid"])
+    key = req.json.get("key")
+    saved = (h.get("checklists") or {}).get(key)
+    if saved and not req.json.get("regenerate"):
+        return {"checklist": saved}
+    cl = gantt.generate(h, _row(h, key), _net(h), radar.build(h))
+    if saved:  # 다시 만들 때: 같은 항목의 체크 상태와 사람이 직접 넣은 항목은 살린다
+        done = {i["id"] for i in saved["items"] if i.get("done")}
+        for i in cl["items"]:
+            i["done"] = i["id"] in done
+        cl["items"] += [i for i in saved["items"] if not i.get("auto") and i["id"] not in {x["id"] for x in cl["items"]}]
+    cl["updated"] = _now()
+    h.setdefault("checklists", {})[key] = cl
+    save_h(h)
+    log(h["id"], "체크리스트 " + ("다시 만들기" if saved else "만들기"), cl["title"])
+    return {"checklist": cl}
+
+
+@app.post("/api/handovers/<hid>/checklist/save")
+def save_checklist(req):
+    h = load_h(req.params["hid"])
+    key = req.json.get("key")
+    cl = (h.get("checklists") or {}).get(key)
+    if not cl:
+        raise HttpError(404, "먼저 체크리스트를 만들어 주세요")
+    cl["items"] = clean(h, gantt.clean_items(req.json.get("items")))
+    cl["updated"] = _now()
+    save_h(h)
+    return {"checklist": cl}
+
+
+@app.post("/api/handovers/<hid>/checklist/export")
+def export_checklist(req):
+    h = load_h(req.params["hid"])
+    fmt = req.query.get("fmt", "hwpx")
+    if fmt not in FORMATS:
+        raise HttpError(400, f"지원하지 않는 파일 형식입니다: '{fmt}'")
+    cl = (h.get("checklists") or {}).get(req.json.get("key"))
+    if not cl:
+        raise HttpError(404, "먼저 체크리스트를 만들어 주세요")
+    data, ctype = export(gantt.to_blocks(cl), fmt)
+    name = f"체크리스트_{_fname(cl['title'])[:40]}"
+    out = store.path(f"handovers/{h['id']}/outputs/{name}.{fmt}")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(data)
+    return file_response(data, f"{name}.{fmt}", ctype)
 
 
 # ---------------------------------------------------------------- 휴먼 네트워크 맵 · 노하우 카드
