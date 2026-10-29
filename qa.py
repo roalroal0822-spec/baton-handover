@@ -238,8 +238,14 @@ def answer(draft, blocks, q, llm=None):
         try:
             out = llm.json(QA_SYSTEM, f"[자료]\n{ctx}\n\n[정리된 인수인계 항목]\n{extra}\n\n[질문]\n{q}")
             used = [int(u) for u in out.get("used", []) if str(u).isdigit() and 1 <= int(u) <= len(sources)]
-            return {"answer": out.get("answer", "").strip(), "items": [dict(it, section=s) for s, it in found_items],
-                    "sources": [sources[u - 1] for u in used] or sources[:3], "mode": llm.label}
+            ans = str(out.get("answer", "")).strip()
+            # 날짜·전화번호·금액 같은 숫자는 자료·항목·질문에 그대로 있어야 한다(지어낸 번호·날짜를 막음)
+            have = set(re.findall(r"\d+", ctx + " " + extra + " " + q))
+            bad = [n for n in re.findall(r"\d+", ans) if n not in have and n.lstrip("0") not in {h.lstrip("0") for h in have}]
+            if ans and not bad:
+                return {"answer": ans, "items": [dict(it, section=s) for s, it in found_items],
+                        "sources": [sources[u - 1] for u in used] or sources[:3], "mode": llm.label}
+            fallback_note = "(모델 답에 자료에 없는 숫자가 있어 규칙 기반 답변을 보여 드립니다)" if bad else ""
         except Exception as e:
             fallback_note = f"(모델 응답 실패로 규칙 기반 답변: {e})"
 

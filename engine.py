@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 from datetime import date
 from email.utils import parsedate_to_datetime
 
+from core.pii import SENSITIVE, mask
 from core.textutil import (HEDGES, NOT_NAMES, extract_dates, find_emails, find_orgs, find_people, find_phones,
                            normalize_phone, similarity, split_sentences, strip_josa)
 
@@ -66,6 +67,10 @@ def doc_topic(doc):
     return name
 
 
+ORGISH = re.compile(r"(?:과|팀|청|공단|공사|연구원|소방서|본부)$")
+DATE_TAIL = re.compile(r"^[년월일](?:까지|부터|이내|전|후|중|초|말|에|의|로)$")  # '11월 3일까지'에서 떨어져 나온 '일까지'
+
+
 def topic_words(text):
     return set(topic_list(text))
 
@@ -75,7 +80,7 @@ def topic_list(text):
     out = []
     for w in re.findall(r"[가-힣A-Za-z]{2,}", text):
         w = strip_josa(w)
-        if w in GENERIC or len(w) < 2 or w.endswith(VERBISH) or w in out:
+        if w in GENERIC or len(w) < 2 or w.endswith(VERBISH) or w in out or DATE_TAIL.match(w):
             continue
         out.append(w)
     return out
@@ -204,6 +209,7 @@ class Extractor:
         """전임자 추정: 제목·첫 줄의 '○○ 인계/인수인계 (이름)'·'담당 이름'에 큰 가중치,
         메일 받는 사람, 그다음 본문 언급 횟수. 협의 상대(팀장 등)가 많이 나와도 이기지 않게 한다."""
         cnt = Counter()
+        strong = set()
         for d in self.docs:
             heads = [b.text for b in d.blocks[:2]] + [d.relpath]
             for h in heads:
@@ -214,6 +220,7 @@ class Extractor:
                     for m in re.finditer(rx, h):
                         if is_name(m.group(1)):
                             cnt[m.group(1)] += 6
+                            strong.add(m.group(1))
             for b in d.blocks:
                 for name, title, _ in people_in(b.text):
                     cnt[name] += 1
@@ -221,7 +228,10 @@ class Extractor:
             m = re.match(r"\s*([가-힣]{2,4})\s*<", to)
             if m:
                 cnt[m.group(1)] += 3
-        return cnt.most_common(1)[0][0] if cnt else ""
+                strong.add(m.group(1))
+        # 제목·받는 사람 단서 없이 본문 언급 횟수만으로는 정하지 않는다(번호가 바뀐 협의 상대가 전임자로 잡혀 연락망에서 빠지던 문제)
+        best = [n for n, _ in cnt.most_common() if n in strong]
+        return best[0] if best else ""
 
     def origin(self, doc_id):
         return self.kind.get(doc_id, "참고자료")
@@ -585,15 +595,18 @@ def build_flags(sections, kind_of_file, today=None):
         for b in sch[i + 1:]:
             if not a.get("action") or a.get("action") != b.get("action"):
                 continue
-            ta = topic_words(a["task"] + " " + (a.get("related") or "")) - set(ACTIONS)
-            tb = topic_words(b["task"] + " " + (b.get("related") or "")) - set(ACTIONS)
+            # 제출처(구청·○○과·○○공단)는 일의 대상이 아니므로 같은 일인지 볼 때 뺀다
+            ta = {w for w in topic_words(a["task"] + " " + (a.get("related") or "")) - set(ACTIONS) if not ORGISH.search(w)}
+            tb = {w for w in topic_words(b["task"] + " " + (b.get("related") or "")) - set(ACTIONS) if not ORGISH.search(w)}
             inter = {x for x in ta for y in tb if x == y or (len(x) >= 3 and len(y) >= 3 and (x in y or y in x))}
             if not inter or len(inter) / max(1, min(len(ta), len(tb))) < 0.3:
                 continue
             if a["months"] == b["months"] and (a.get("day") == b.get("day") or not a.get("day") or not b.get("day")):
                 continue
-            if a.get("recurring") or b.get("recurring"):
+            if "매월" in (a.get("recurring"), b.get("recurring")):
                 continue
+            if (a.get("recurring") or b.get("recurring")) and a["months"] != b["months"]:
+                continue  # 매년 하는 일은 같은 달에 날짜가 다를 때만 충돌(상반기·하반기 정기점검은 서로 다른 일)
             flag("충돌", f"'{a['action']}' 시기가 자료마다 다릅니다: {_when(a)} vs {_when(b)}",
                  [a["id"], b["id"]], a["sources"] + b["sources"], "상")
 
@@ -821,7 +834,7 @@ def llm_extract(llm, docs, predecessor, kind_of, refs=None):
             continue
         windows, cur, size = [], [], 0
         for b in d.blocks:
-            line = f"[{b.id}] {b.text}"
+            line = f"[{b.id}] {mask(b.text, SENSITIVE)[0]}"  # 주민번호·계좌·카드·여권은 모델에 보내지 않음
             if size + len(line) > 3500 and cur:
                 windows.append(cur)
                 cur, size = [], 0
@@ -919,7 +932,7 @@ def apply_cadence(schedule, ex):
         topics |= {w for w in topic_words(it["task"]) if not re.search(r"\d|정기", w)}
         for b in monthly:
             words = {w for w in topic_words(b.text) if not re.search(r"\d", w)}
-            if topics and _overlap(topics, words):
+            if topics & words:  # 같은 대상어가 그대로 있어야 함('전기 사용량'의 '전기' ⊂ '전기설비'로 매월이 번지던 문제)
                 it["recurring"] = "매월"
                 it["months"] = list(range(1, 13))
                 it["when"] = (it.get("when") or "") + " (같은 업무가 매월 반복됨)"
@@ -998,6 +1011,26 @@ def attach_notes(sections, ex):
 
 # ---------------------------------------------------------------- 전체 실행
 
+def mask_sensitive(sections, flags):
+    """인수인계서에 옮길 글에서 신원·금융 정보(주민번호·계좌·카드·여권)를 가린다. 전화·이메일은 업무 연락망이라 둔다."""
+    kinds = []
+
+    def walk(x):
+        if isinstance(x, dict):
+            for k, v in x.items():
+                if isinstance(v, str) and k not in ("id", "file", "doc_id", "block_id"):
+                    x[k], ks = mask(v, SENSITIVE)
+                    kinds.extend(k_ for k_ in ks if k_ not in kinds)
+                else:
+                    walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+    walk(sections)
+    walk(flags)
+    return kinds
+
+
 def analyze(docs, predecessor="", llm=None, today=None):
     t0 = time.time()
     ex = Extractor(docs, predecessor, today)
@@ -1051,14 +1084,20 @@ def analyze(docs, predecessor="", llm=None, today=None):
                 + (f" 모델이 낸 항목 중 원문과 맞지 않는 {sum(f['count'] for f in filtered)}건은 버렸습니다." if filtered else ""))
     if llm is not None and llm.enabled:
         try:
-            o = llm.json("공공기관 인수인계서의 '업무 개요'를 3문장 이내로 씁니다. 주어진 항목에 없는 내용은 쓰지 않습니다. 출력: {\"overview\":\"...\"}",
-                         _overview_input(ex.predecessor, sections))
-            if o.get("overview"):
-                overview = o["overview"].strip() + "\n\n" + overview
+            src = _overview_input(ex.predecessor, sections)
+            o = llm.json("공공기관 인수인계서의 '업무 개요'를 3문장 이내로 씁니다. 주어진 항목에 없는 내용은 쓰지 않습니다. 출력: {\"overview\":\"...\"}", src)
+            ov = str(o.get("overview") or "").strip()
+            have = set(re.findall(r"\d+", src))
+            if ov and all(n in have for n in re.findall(r"\d+", ov)):  # 항목에 없는 숫자(날짜·금액)가 끼면 쓰지 않음
+                overview = ov + "\n\n" + overview
+            elif ov:
+                llm_errors.append("개요 작성: 모델 문장에 항목에 없는 숫자가 있어 쓰지 않았습니다")
         except Exception as e:
             llm_errors.append(f"개요 작성: {e}")
+    masked = mask_sensitive(sections, flags)
     return {
         "predecessor": ex.predecessor,
+        "masked": masked,
         "engine": engine,
         "seconds": round(time.time() - t0, 2),
         "overview": overview,
