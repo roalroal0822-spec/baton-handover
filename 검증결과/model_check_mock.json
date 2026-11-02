@@ -1,0 +1,132 @@
+{
+ "date": "2026-11-02",
+ "provider": "openai",
+ "mock": true,
+ "models": [
+  {
+   "model": "mock-a",
+   "passed": 3,
+   "total": 3,
+   "items": [
+    {
+     "name": "연결 확인",
+     "ok": true,
+     "seconds": 0.0,
+     "note": "확인"
+    },
+    {
+     "name": "업무바통: 인수인계서 초안(모델 추출 + 근거 검증)",
+     "ok": true,
+     "seconds": 0.1,
+     "note": "모델이 추가한 항목 5개, 오류 0건"
+    },
+    {
+     "name": "업무바통: 후임자 질문 답변(번호가 원문과 일치)",
+     "ok": true,
+     "seconds": 0.0,
+     "note": "승강기 연락처는 02-000-1830입니다 [1]."
+    }
+   ]
+  },
+  {
+   "model": "mock-b",
+   "passed": 3,
+   "total": 3,
+   "items": [
+    {
+     "name": "연결 확인",
+     "ok": true,
+     "seconds": 0.0,
+     "note": "확인"
+    },
+    {
+     "name": "업무바통: 인수인계서 초안(모델 추출 + 근거 검증)",
+     "ok": true,
+     "seconds": 0.0,
+     "note": "모델이 추가한 항목 5개, 오류 0건"
+    },
+    {
+     "name": "업무바통: 후임자 질문 답변(번호가 원문과 일치)",
+     "ok": true,
+     "seconds": 0.0,
+     "note": "승강기 연락처는 02-000-1830입니다 [1]."
+    }
+   ]
+  },
+  {
+   "model": "mock-gemma",
+   "passed": 3,
+   "total": 3,
+   "items": [
+    {
+     "name": "연결 확인 [젬마(Gemma)]",
+     "ok": true,
+     "seconds": 0.0,
+     "note": "확인"
+    },
+    {
+     "name": "업무바통: 인수인계서 초안(모델 추출 + 근거 검증)",
+     "ok": true,
+     "seconds": 0.1,
+     "note": "모델이 추가한 항목 5개, 오류 0건"
+    },
+    {
+     "name": "업무바통: 후임자 질문 답변(번호가 원문과 일치)",
+     "ok": true,
+     "seconds": 0.0,
+     "note": "승강기 연락처는 02-000-1830입니다 [1]."
+    }
+   ]
+  },
+  {
+   "model": "mock-exaone",
+   "passed": 3,
+   "total": 3,
+   "items": [
+    {
+     "name": "연결 확인 [엑사원(EXAONE)]",
+     "ok": true,
+     "seconds": 0.0,
+     "note": "확인"
+    },
+    {
+     "name": "업무바통: 인수인계서 초안(모델 추출 + 근거 검증)",
+     "ok": true,
+     "seconds": 0.0,
+     "note": "모델이 추가한 항목 5개, 오류 0건"
+    },
+    {
+     "name": "업무바통: 후임자 질문 답변(번호가 원문과 일치)",
+     "ok": true,
+     "seconds": 0.0,
+     "note": "승강기 연락처는 02-000-1830입니다 [1]."
+    }
+   ]
+  },
+  {
+   "model": "mock-gpt-oss",
+   "passed": 3,
+   "total": 3,
+   "items": [
+    {
+     "name": "연결 확인 [GPT-OSS]",
+     "ok": true,
+     "seconds": 0.0,
+     "note": "확인"
+    },
+    {
+     "name": "업무바통: 인수인계서 초안(모델 추출 + 근거 검증)",
+     "ok": true,
+     "seconds": 0.0,
+     "note": "모델이 추가한 항목 5개, 오류 0건"
+    },
+    {
+     "name": "업무바통: 후임자 질문 답변(번호가 원문과 일치)",
+     "ok": true,
+     "seconds": 0.0,
+     "note": "승강기 연락처는 02-000-1830입니다 [1]."
+    }
+   ]
+  }
+ ]
+}

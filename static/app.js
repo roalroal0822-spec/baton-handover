@@ -280,6 +280,7 @@ function renderDraft() {
     el("h3", {}, "업무 개요"), el("p", { style: { whiteSpace: "pre-wrap" } }, d.overview),
     d.filtered && d.filtered.length ? el("details", {}, el("summary", { class: "small" }, `모델 결과 중 원문과 맞지 않아 버린 항목 ${d.filtered.reduce((n, f) => n + (f.count || 1), 0)}건`),
       el("ul", { class: "small" }, d.filtered.map(f => el("li", {}, `[${SEC[f.section] ? SEC[f.section].title : f.section}] ${f.label || "(이름 없음)"}${(f.count || 1) > 1 ? ` (${f.count}회)` : ""} — ${f.reason} `, citeChips(f.sources || [], CTX()))))) : null,
+    d.masked && d.masked.length ? el("p", { class: "small muted" }, `※ 자료에 있던 ${d.masked.join(", ")}는 인수인계서·모델 전달 전에 ○○○로 가렸습니다(전화·이메일은 업무 연락망이라 그대로 둠).`) : null,
     d.llm_errors && d.llm_errors.length ? el("details", {}, el("summary", { class: "small" }, `모델 처리 경고 ${d.llm_errors.length}건 (해당 부분은 규칙 기반 결과 사용)`), el("pre", { class: "doc small" }, d.llm_errors.join("\n"))) : null,
     H.skipped && H.skipped.length ? el("details", {}, el("summary", { class: "small" }, `읽지 못한 파일 ${H.skipped.length}개`), el("ul", { class: "small" }, H.skipped.map(s => el("li", {}, `${s.file}: ${s.reason}`)))) : null,
     el("div", { class: "row", style: { marginTop: "10px" } },
@@ -643,6 +644,7 @@ function setupAsk() {
       const who = r.who || [];
       const pics = r.photos || [];
       pending.replaceWith(bot(el("div", { style: { whiteSpace: "pre-wrap" } }, r.answer),
+        r.masked && r.masked.length ? el("div", { class: "small muted" }, `※ 질문의 ${r.masked.join(", ")}를 ○○○로 가린 뒤 처리했습니다.`) : null,
         pics.length ? el("div", { class: "ask-photos" }, el("div", { class: "small muted" }, `관련 사진 ${pics.length}장`),
           el("div", { class: "ph-row" }, pics.map(p => photoCard(p, true))),
           el("button", { class: "small", onclick: () => { goTab("photos"); renderPhotos(q); } }, "포토 아카이브에서 더 보기")) : null,
@@ -1233,7 +1235,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const placeBaton = setupTrack();
   goTab = setupTabs(id => {
     document.body.dataset.tab = id; requestAnimationFrame(placeBaton);
-    if (id === "history") renderHistory(); if (id === "form") renderForm(); if (id === "reports") renderReports(); if (id === "start") renderHub();
+    if (id === "history") renderHistory(); if (id === "form") renderForm(); if (id === "reports") renderReports(); if (id === "start") renderHub(); if (id === "about") renderAbout();
   });
   $("#cur-h").onchange = e => e.target.value && select(e.target.value);
   await refreshList();

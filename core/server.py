@@ -3,6 +3,7 @@
 외부 웹 프레임워크를 쓰지 않아 설치·유지관리 부담이 없다.
 """
 import ipaddress
+import os
 import json
 import mimetypes
 import re
@@ -30,6 +31,8 @@ class Request:
     def body(self):
         if self._body is None:
             n = int(self.handler.headers.get("Content-Length") or 0)
+            if n > 40_000_000 and os.environ.get("PUBLIC_DEMO") == "1":
+                raise HttpError(413, "공개 시연판에서는 한 번에 40MB까지만 올릴 수 있습니다")
             self._body = self.handler.rfile.read(n) if n else b""
         return self._body
 
@@ -110,7 +113,7 @@ class App:
         """DNS 리바인딩 차단: 주소창 주소(Host)가 localhost 또는 IP 주소일 때만 받는다.
         공격 사이트는 자기 도메인 이름을 이 PC로 돌려 접속하므로 Host에 도메인이 찍힌다(GET 포함 모든 요청에 적용)."""
         host = (handler.headers.get("Host") or "").strip().lower()
-        if not host:
+        if not host or os.environ.get("PUBLIC_DEMO") == "1":  # 공개 시연판은 자기 도메인으로 접속받는다(이 PC 자료가 없는 서버)
             return False
         name = host.rsplit(":", 1)[0] if not host.endswith("]") else host
         name = name.strip("[]")

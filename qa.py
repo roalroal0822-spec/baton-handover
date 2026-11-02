@@ -284,9 +284,14 @@ def answer(draft, blocks, q, llm=None, persona=None):
             used = [int(u) for u in out.get("used", []) if str(u).isdigit() and 1 <= int(u) <= len(sources)]
             text = str(out.get("answer") or "").strip()
             found = out.get("found") is not False and bool(text) and "찾지 못했" not in text
-            return {"answer": text, "items": [dict(it, section=s) for s, it in found_items],
-                    "sources": ([sources[u - 1] for u in used] or sources[:3]) if found else [], "mode": llm.label,
-                    "found": found}
+            # 날짜·전화번호·금액 같은 숫자는 자료·항목·질문에 그대로 있어야 한다(지어낸 번호·날짜를 막음)
+            have = set(re.findall(r"\d+", ctx + " " + extra + " " + q))
+            bad = [n for n in re.findall(r"\d+", text) if n not in have and n.lstrip("0") not in {h.lstrip("0") for h in have}]
+            if not bad:
+                return {"answer": text, "items": [dict(it, section=s) for s, it in found_items],
+                        "sources": ([sources[u - 1] for u in used] or sources[:3]) if found else [], "mode": llm.label,
+                        "found": found}
+            fallback_note = "(모델 답에 자료에 없는 숫자가 있어 규칙 기반 답변을 보여 드립니다)"
         except Exception as e:
             fallback_note = f"(모델 응답 실패로 규칙 기반 답변: {e})"
 
